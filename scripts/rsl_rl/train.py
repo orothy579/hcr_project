@@ -41,6 +41,9 @@ if args_cli.video:
 # clear out sys.argv for Hydra
 sys.argv = [sys.argv[0]] + hydra_args
 
+# if args_cli.task is not None:
+#     sys.argv += [f"task={args_cli.task}"]
+
 # launch omniverse app
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
