@@ -4,7 +4,9 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import math
-from dataclasses import MISSING
+
+# Import robot configuration from project_CH.assets
+from project_CH.assets import GO2_PIPER_CFG  # shared Go2+Piper robot cfg from master project
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
@@ -24,6 +26,9 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
+
+# Import PPO runner configuration for Unitree Go2 robot
+from .agents.rsl_rl_ppo_cfg import UnitreeGo2RoughPPORunnerCfg
 
 ##
 # Pre-defined configs
@@ -60,8 +65,8 @@ class MySceneCfg(InteractiveSceneCfg):
         ),
         debug_vis=False,
     )
-    # robots
-    robot: ArticulationCfg = MISSING
+    # robots – shared Go2-Piper articulation configuration (DummyGo2Cfg)
+    robot: ArticulationCfg = GO2_PIPER_CFG
     # sensors
     height_scanner = RayCasterCfg(
         prim_path="{ENV_REGEX_NS}/Robot/base",
@@ -327,3 +332,40 @@ class LocomotionVelocityRoughEnvCfg(ManagerBasedRLEnvCfg):
         else:
             if self.scene.terrain.terrain_generator is not None:
                 self.scene.terrain.terrain_generator.curriculum = False
+
+
+@configclass
+class ProjectChVelocityEnvCfg(ManagerBasedRLEnvCfg):
+    """Configuration for Project CH velocity task with custom Go2 piper robot."""
+
+    # Scene settings
+    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
+    
+    # Basic settings
+    observations: ObservationsCfg = ObservationsCfg()
+    actions: ActionsCfg = ActionsCfg()
+    commands: CommandsCfg = CommandsCfg()
+
+    # MDP settings
+    rewards: RewardsCfg = RewardsCfg()
+    terminations: TerminationsCfg = TerminationsCfg()
+    events: EventCfg = EventCfg()
+    curriculum: CurriculumCfg = CurriculumCfg()
+
+    # PPO Runner settings
+    runner: UnitreeGo2RoughPPORunnerCfg = UnitreeGo2RoughPPORunnerCfg()
+
+    def __post_init__(self):
+        """Post initialization."""
+        self.decimation = 4
+        self.episode_length_s = 20.0
+        self.sim.dt = 0.005
+        self.sim.render_interval = self.decimation
+        self.sim.physics_material = self.scene.terrain.physics_material
+        self.sim.physx.gpu_max_rigid_patch_count = 10 * 2**15
+
+        # Update sensor update periods
+        if self.scene.height_scanner is not None:
+            self.scene.height_scanner.update_period = self.decimation * self.sim.dt
+        if self.scene.contact_forces is not None:
+            self.scene.contact_forces.update_period = self.sim.dt

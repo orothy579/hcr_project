@@ -6,8 +6,15 @@
 
 # Import shared robot configuration from master project
 try:
-    from go2_piper_master.assets import GO2_PIPER_CFG
-    __all__ = ["GO2_PIPER_CFG"]
+    # First, try nested path (editable install layout)
+    from go2_piper_master.go2_piper_master.assets import GO2_PIPER_CFG  # type: ignore
 except ImportError:
-    print("[WARNING] go2_piper_master not found. Please install master project first.")
-    __all__ = [] 
+    try:
+        # Fallback: legacy path
+        from go2_piper_master.assets import GO2_PIPER_CFG  # type: ignore
+    except ImportError:
+        print("[WARNING] go2_piper_master not found. Using DummyGo2Cfg as fallback.")
+        from .dummy_go2_cfg import DummyGo2Cfg as GO2_PIPER_CFG
+
+# export
+__all__ = ["GO2_PIPER_CFG"] 

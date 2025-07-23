@@ -2,3 +2,16 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
+
+"""Agent configurations for Project CH."""
+
+# Re-export PPO runner configurations for easy import by gym registry
+from .rsl_rl_ppo_cfg import (
+    UnitreeGo2RoughPPORunnerCfg,
+    UnitreeGo2FlatPPORunnerCfg,
+)
+
+__all__ = [
+    "UnitreeGo2RoughPPORunnerCfg",
+    "UnitreeGo2FlatPPORunnerCfg",
+]
