@@ -6,7 +6,7 @@
 """Script to run an environment with zero action agent."""
 
 """Launch Isaac Sim Simulator first."""
-
+                    
 import argparse
 
 from isaaclab.app import AppLauncher

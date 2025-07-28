@@ -21,9 +21,18 @@ except ImportError:
 @configclass
 class ProjectChEnvCfg(Go2PiperMasterEnvCfg):
     """Environment configuration for Project CH.
-    
+  
     Inherits from master configuration and can be customized.
     """
-    
+
     # Customize here as needed
-    pass
+    action_scale: float = 0.5
+    joint_gears: list = [1.0] * 20
+    angular_velocity_scale: float = 0.25
+    dof_vel_scale: float = 0.2
+    up_weight: float = 2.0
+    heading_weight: float = 1.0
+    actions_cost_scale: float = 0.01
+    energy_cost_scale: float = 0.05
+    death_cost: float = -1.0
+    alive_reward_scale: float = 0.1
