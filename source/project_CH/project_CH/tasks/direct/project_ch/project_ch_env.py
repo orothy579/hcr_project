@@ -109,20 +109,29 @@ class ProjectChEnv(Go2PiperMasterEnv):
         return compute_rewards(
             self.actions,
             self.reset_terminated,
-            self.cfg.up_weight,
-            self.cfg.heading_weight,
             self.heading_proj,
             self.up_proj,
+            self.vel_loc,
+            self.angvel_loc,
             self.dof_vel,
             self.dof_pos_scaled,
             self.potentials,
             self.prev_potentials,
+            self.motor_effort_ratio,
+
+            # cfg에서 가져온 weight들
+            self.cfg.heading_weight,
+            self.cfg.alive_reward_scale,
+            self.cfg.death_cost,
             self.cfg.actions_cost_scale,
             self.cfg.energy_cost_scale,
             self.cfg.dof_vel_scale,
-            self.cfg.death_cost,
-            self.cfg.alive_reward_scale,
-            self.motor_effort_ratio,
+            self.cfg.track_lin_vel_xy_exp_weight,
+            self.cfg.track_ang_vel_z_exp_weight,
+            self.cfg.dof_torques_l2_weight,
+            self.cfg.dof_acc_l2_weight,
+            self.cfg.feet_air_time_weight,
+            self.cfg.flat_orientation_l2_weight,
         )
 
     def _get_observations(self) -> dict:
@@ -149,57 +158,151 @@ class ProjectChEnv(Go2PiperMasterEnv):
         return {"policy": obs}
 
 
+# old reward function -> from locomotion.py
+# @torch.jit.script
+# def compute_rewards(
+#     actions: torch.Tensor,
+#     reset_terminated: torch.Tensor,
+#     up_weight: float,
+#     heading_weight: float,
+#     heading_proj: torch.Tensor,
+#     up_proj: torch.Tensor,
+#     dof_vel: torch.Tensor,
+#     dof_pos_scaled: torch.Tensor,
+#     potentials: torch.Tensor,
+#     prev_potentials: torch.Tensor,
+#     actions_cost_scale: float,
+#     energy_cost_scale: float,
+#     dof_vel_scale: float,
+#     death_cost: float,
+#     alive_reward_scale: float,
+#     motor_effort_ratio: torch.Tensor,
+# ):
+#     heading_weight_tensor = torch.ones_like(heading_proj) * heading_weight
+#     heading_reward = torch.where(heading_proj > 0.8, heading_weight_tensor, heading_weight * heading_proj / 0.8)
+
+#     # aligning up axis of robot and environment
+#     up_reward = torch.zeros_like(heading_reward)
+#     up_reward = torch.where(up_proj > 0.93, up_reward + up_weight, up_reward)
+
+#     # energy penalty for movement
+#     actions_cost = torch.sum(actions**2, dim=-1)
+#     electricity_cost = torch.sum(
+#         torch.abs(actions * dof_vel * dof_vel_scale) * motor_effort_ratio.unsqueeze(0),
+#         dim=-1,
+#     )
+
+#     # dof at limit cost
+#     dof_at_limit_cost = torch.sum(dof_pos_scaled > 0.98, dim=-1)
+
+#     # reward for duration of staying alive
+#     alive_reward = torch.ones_like(potentials) * alive_reward_scale
+#     progress_reward = potentials - prev_potentials
+
+#     total_reward = (
+#         progress_reward
+#         + alive_reward
+#         + up_reward
+#         + heading_reward
+#         - actions_cost_scale * actions_cost
+#         - energy_cost_scale * electricity_cost
+#         - dof_at_limit_cost
+#     )
+#     # adjust reward for fallen agents
+#     total_reward = torch.where(reset_terminated, torch.ones_like(total_reward) * death_cost, total_reward)
+#     return total_reward
+
+# new reward function 0728:17:17
 @torch.jit.script
 def compute_rewards(
     actions: torch.Tensor,
     reset_terminated: torch.Tensor,
-    up_weight: float,
-    heading_weight: float,
     heading_proj: torch.Tensor,
     up_proj: torch.Tensor,
+    vel_loc: torch.Tensor,
+    angvel_loc: torch.Tensor,
     dof_vel: torch.Tensor,
     dof_pos_scaled: torch.Tensor,
     potentials: torch.Tensor,
     prev_potentials: torch.Tensor,
+    motor_effort_ratio: torch.Tensor,
+
+    # cfg에서 가져온 값들
+    heading_weight: float,
+    alive_reward_scale: float,
+    death_cost: float,
     actions_cost_scale: float,
     energy_cost_scale: float,
     dof_vel_scale: float,
-    death_cost: float,
-    alive_reward_scale: float,
-    motor_effort_ratio: torch.Tensor,
+    track_lin_vel_xy_exp_weight: float,
+    track_ang_vel_z_exp_weight: float,
+    dof_torques_l2_weight: float,
+    dof_acc_l2_weight: float,
+    feet_air_time_weight: float,
+    flat_orientation_l2_weight: float,
 ):
+    # 1. 기본 보상 (progress + alive)
+    progress_reward = potentials - prev_potentials
+    alive_reward = torch.ones_like(progress_reward) * alive_reward_scale
+
+    # 2. Heading 보상
     heading_weight_tensor = torch.ones_like(heading_proj) * heading_weight
-    heading_reward = torch.where(heading_proj > 0.8, heading_weight_tensor, heading_weight * heading_proj / 0.8)
+    heading_reward = torch.where(
+        heading_proj > 0.8,
+        heading_weight_tensor,
+        heading_weight * heading_proj / 0.8,
+    )
 
-    # aligning up axis of robot and environment
-    up_reward = torch.zeros_like(heading_reward)
-    up_reward = torch.where(up_proj > 0.93, up_reward + up_weight, up_reward)
+    # 3. Up 방향 보정 (기울기 보상/패널티)
+    orientation_penalty = torch.where(
+        up_proj < 0.93,
+        torch.ones_like(up_proj) * flat_orientation_l2_weight,
+        torch.zeros_like(up_proj),
+    )
 
-    # energy penalty for movement
-    actions_cost = torch.sum(actions**2, dim=-1)
+    # 4. 전진 속도 보상 (목표 속도 = 1 m/s 가정)
+    target_lin_vel = 1.0
+    lin_vel_error = vel_loc[:, 0] - target_lin_vel
+    lin_vel_reward = torch.exp(-lin_vel_error**2) * track_lin_vel_xy_exp_weight
+
+    # 5. 회전 속도 보상 (목표 yaw rate = 0)
+    target_ang_vel = 0.0
+    ang_vel_error = angvel_loc[:, 2] - target_ang_vel
+    ang_vel_reward = torch.exp(-ang_vel_error**2) * track_ang_vel_z_exp_weight
+
+    # 6. Torque 패널티
+    torque_penalty = torch.sum(actions**2, dim=-1) * dof_torques_l2_weight
+
+    # 7. Joint 가속도 패널티
+    acc_penalty = torch.sum(dof_vel**2, dim=-1) * dof_acc_l2_weight
+
+    # 8. Energy penalty
     electricity_cost = torch.sum(
         torch.abs(actions * dof_vel * dof_vel_scale) * motor_effort_ratio.unsqueeze(0),
         dim=-1,
     )
 
-    # dof at limit cost
-    dof_at_limit_cost = torch.sum(dof_pos_scaled > 0.98, dim=-1)
+    # 9. Feet air time 보상 (feet_contact 센서 없으므로 0 처리)
+    feet_air_time_reward = torch.zeros_like(progress_reward) * feet_air_time_weight
 
-    # reward for duration of staying alive
-    alive_reward = torch.ones_like(potentials) * alive_reward_scale
-    progress_reward = potentials - prev_potentials
-
+    # 10. 모든 보상 합산
     total_reward = (
         progress_reward
         + alive_reward
-        + up_reward
         + heading_reward
-        - actions_cost_scale * actions_cost
+        + orientation_penalty
+        + lin_vel_reward
+        + ang_vel_reward
+        + torque_penalty
+        + acc_penalty
+        - actions_cost_scale * torch.sum(actions**2, dim=-1)
         - energy_cost_scale * electricity_cost
-        - dof_at_limit_cost
+        + feet_air_time_reward
     )
-    # adjust reward for fallen agents
+
+    # 11. 종료 시 death cost 적용
     total_reward = torch.where(reset_terminated, torch.ones_like(total_reward) * death_cost, total_reward)
+
     return total_reward
 
 

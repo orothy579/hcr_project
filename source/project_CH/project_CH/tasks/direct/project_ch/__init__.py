@@ -24,6 +24,6 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": "project_CH.tasks.direct.project_ch:ProjectChEnvCfg",
-        "rsl_rl_cfg_entry_point": "project_CH.tasks.direct.project_ch.agents.rsl_rl_ppo_cfg:UnitreeGo2FlatPPORunnerCfg",
+        "rsl_rl_cfg_entry_point": "project_CH.tasks.direct.project_ch.agents.rsl_rl_ppo_cfg:UnitreeGo2RoughPPORunnerCfg",
     },
 )
