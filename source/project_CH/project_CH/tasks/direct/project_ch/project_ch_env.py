@@ -106,7 +106,7 @@ class ProjectChEnv(Go2PiperMasterEnv):
         if not MASTER_AVAILABLE:
             return torch.zeros(self.num_envs, device=self.device)
         self._compute_intermediate_values()
-        return compute_rewards(
+        total_reward, reward_terms = compute_rewards(
             self.actions,
             self.reset_terminated,
             self.heading_proj,
@@ -133,6 +133,8 @@ class ProjectChEnv(Go2PiperMasterEnv):
             self.cfg.feet_air_time_weight,
             self.cfg.flat_orientation_l2_weight,
         )
+        self.extras["episode"] = reward_terms
+        return total_reward
 
     def _get_observations(self) -> dict:
         """CH-specific observations.""" 
@@ -286,24 +288,26 @@ def compute_rewards(
     feet_air_time_reward = torch.zeros_like(progress_reward) * feet_air_time_weight
 
     # 10. 모든 보상 합산
-    total_reward = (
-        progress_reward
-        + alive_reward
-        + heading_reward
-        + orientation_penalty
-        + lin_vel_reward
-        + ang_vel_reward
-        + torque_penalty
-        + acc_penalty
-        - actions_cost_scale * torch.sum(actions**2, dim=-1)
-        - energy_cost_scale * electricity_cost
-        + feet_air_time_reward
-    )
+    reward_terms = {
+        "progress_reward": progress_reward,
+        "alive_reward": alive_reward,
+        "heading_reward": heading_reward,
+        "orientation_penalty": orientation_penalty,
+        "lin_vel_reward": lin_vel_reward,
+        "ang_vel_reward": ang_vel_reward,
+        "torque_penalty": torque_penalty,
+        "acc_penalty": acc_penalty,
+        "action_penalty": -actions_cost_scale * torch.sum(actions**2, dim=-1),
+        "energy_penalty": -energy_cost_scale * electricity_cost,
+        "feet_air_time_reward": feet_air_time_reward,
+    }
+
+    total_reward = torch.stack(list(reward_terms.values()), dim=0).sum(dim=0)
 
     # 11. 종료 시 death cost 적용
     total_reward = torch.where(reset_terminated, torch.ones_like(total_reward) * death_cost, total_reward)
 
-    return total_reward
+    return total_reward, reward_terms
 
 
 @torch.jit.script
