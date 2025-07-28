@@ -34,5 +34,5 @@ class ProjectChEnvCfg(Go2PiperMasterEnvCfg):
     heading_weight: float = 1.0
     actions_cost_scale: float = 0.01
     energy_cost_scale: float = 0.05
-    death_cost: float = -1.0
-    alive_reward_scale: float = 0.1
+    death_cost: float = -5.0
+    alive_reward_scale: float = 5.0
