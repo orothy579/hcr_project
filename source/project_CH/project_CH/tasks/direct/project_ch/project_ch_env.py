@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import torch
 import isaacsim.core.utils.torch as torch_utils
+import xml.etree.ElementTree as ET
 from isaacsim.core.utils.torch.rotations import compute_heading_and_up, compute_rot, quat_conjugate
 from .project_ch_env_cfg import ProjectChEnvCfg
 
@@ -29,7 +30,6 @@ except ImportError:
 def normalize_angle(x):
     return torch.atan2(torch.sin(x), torch.cos(x))
 
-
 class ProjectChEnv(Go2PiperMasterEnv):
     """Project CH environment (Direct Sytle) - extends master environment."""
   
@@ -45,21 +45,73 @@ class ProjectChEnv(Go2PiperMasterEnv):
             print("[WARNING] Running with fallback environment")
         
         # Locomotion-related states
-        self.joint_gears = torch.ones(self.cfg.joint_gears, device=self.device)
-        self.motor_effort_ratio = torch.ones_like(self.joint_gears)
+        self.joint_gears = torch.tensor(self.cfg.joint_gears, device=self.device)
+
+        # robot.data에서 effort limit 가져오기 시도
+        if hasattr(self.robot.data, "soft_joint_effort_limits"):
+            effort_limits = self.robot.data.soft_joint_effort_limits[0]
+            if effort_limits is not None and effort_limits.shape[0] == self.robot.num_joints:
+                self.motor_effort_ratio = effort_limits / effort_limits.max()
+            else:
+                print("[WARNING] Effort limit shape mismatch. Fallback to URDF parsing.")
+                self.motor_effort_ratio = self._load_effort_limits_from_urdf()
+        else:
+            print("[WARNING] robot.data에 effort limit 없음. URDF 파싱 사용.")
+            self.motor_effort_ratio = self._load_effort_limits_from_urdf()
+                    
         
         self.potentials = torch.zeros(self.num_envs, device=self.device)
         self.prev_potentials = torch.zeros_like(self.potentials)
         
-        self.targets = torch.tensor([1000, 0 , 0], dtype=torch.float32, device=self.device).repeat((self.num_envs, 1))
-        self.targets = self.targets + self.scene.env_origins.to(dtype=torch.float32)
+        # About feet
+        self.feet_link_names = ["FL_foot", "FR_foot", "RL_foot", "RR_foot"]
+        self.feet_indices = self.robot.find_link_indices(self.feet_link_names)
+        self.feet_air_time = torch.zeros(self.num_envs, device=self.device)
+        self.prev_contact = torch.zeros((self.num_envs, len(self.feet_indices)), device=self.device)
         
+        self.targets = self._sample_random_targets()
+                
         self.start_rotation = torch.tensor([1, 0, 0, 0], dtype=torch.float32, device=self.device)
         self.inv_start_rot = quat_conjugate(self.start_rotation).repeat((self.num_envs, 1))
         
         self.basis_vec0 = torch.tensor([1, 0, 0], dtype=torch.float32, device=self.device).repeat((self.num_envs, 1))
         self.basis_vec1 = torch.tensor([0, 0, 1], dtype=torch.float32, device=self.device).repeat((self.num_envs, 1))
 
+    def _load_effort_limits_from_urdf(self):
+        # URDF 경로: 패키지 기준으로 절대경로 생성
+        urdf_path = Path(__file__).parent.parent / "assets" / "go2_piper_integrated.urdf"
+        urdf_path = urdf_path.resolve()
+
+        effort_limits = []
+        tree = ET.parse(urdf_path)
+        root = tree.getroot()
+        for joint in root.findall("joint"):
+            limit = joint.find("limit")
+            if limit is not None and "effort" in limit.attrib:
+                effort_limits.append(float(limit.attrib["effort"]))
+
+        return torch.tensor(effort_limits, device=self.device) / max(effort_limits)
+    
+    def _sample_random_targets(self):
+        # X,Y 축 방향으로 무작위 목표 위치 설정
+        random_xy = torch.rand((self.num_envs, 2), device=self.device) * 4.0 - 2.0
+        fixed_z = torch.zeros((self.num_envs,1), device=self.device)
+        targets = torch.cat([random_xy, fixed_z], dim=1) + self.scene.env_origins.to(dtype=torch.float32)
+        return targets
+
+    def _update_feet_air_time(self):
+        contact_forces = self.robot.data.contact_forces[:, self.feet_indices]
+        contact = contact_forces.norm(dim=-1) > 1e-3
+        
+        just_landed = (contact.float() - self.prev_contact) < 0
+        
+        # 각 발별 air time 계산 후 평균 사용
+        self.feet_air_time += (~contact).float().mean(dim=-1) * self.cfg.sim.dt
+        reset_mask = just_landed.any(dim=-1)
+        self.feet_air_time = torch.where(reset_mask, torch.zeros_like(self.feet_air_time), self.feet_air_time)
+
+        self.prev_contact = contact.float()
+    
     # Apply action to the robot
     def _apply_action(self):
         forces = self.cfg.action_scale * self.joint_gears * self.actions
@@ -105,6 +157,10 @@ class ProjectChEnv(Go2PiperMasterEnv):
         if not MASTER_AVAILABLE:
             return torch.zeros(self.num_envs, device=self.device)
         self._compute_intermediate_values()
+        self._update_feet_air_time()
+        
+        feet_air_time_reward = self.feet_air_time * self.cfg.feet_air_time_weight
+
         total_reward, reward_terms = compute_rewards(
             self.actions,
             self.reset_terminated,
@@ -130,7 +186,7 @@ class ProjectChEnv(Go2PiperMasterEnv):
             self.cfg.dof_torques_l2_weight,
             self.cfg.dof_acc_l2_weight,
             self.cfg.flat_orientation_l2_weight,
-            self.cfg.feet_air_time_weight,
+            feet_air_time_reward,
         )
         self.extras["episode"] = reward_terms
         return total_reward
@@ -184,8 +240,8 @@ def compute_rewards(
     track_ang_vel_z_exp_weight: float,
     dof_torques_l2_weight: float,
     dof_acc_l2_weight: float,
-    feet_air_time_weight: float,
     flat_orientation_l2_weight: float,
+    feet_air_time_reward: torch.Tensor,
 ):
     # 1. 기본 보상 (progress + alive)
     progress_reward = potentials - prev_potentials
@@ -202,7 +258,7 @@ def compute_rewards(
     # 3. Up 방향 보정 (기울기 보상/패널티)
     orientation_penalty = torch.where(
         up_proj < 0.93,
-        torch.ones_like(up_proj) * flat_orientation_l2_weight,
+        -torch.ones_like(up_proj) * abs(flat_orientation_l2_weight),
         torch.zeros_like(up_proj),
     )
 
@@ -217,10 +273,10 @@ def compute_rewards(
     ang_vel_reward = torch.exp(-ang_vel_error**2) * track_ang_vel_z_exp_weight
 
     # 6. Torque 패널티
-    torque_penalty = torch.sum(actions**2, dim=-1) * dof_torques_l2_weight
+    torque_penalty = -torch.sum(actions**2, dim=-1) * abs(dof_torques_l2_weight)
 
     # 7. Joint 가속도 패널티
-    acc_penalty = torch.sum(dof_vel**2, dim=-1) * dof_acc_l2_weight
+    acc_penalty = -torch.sum(dof_vel**2, dim=-1) * abs(dof_acc_l2_weight)
 
     # 8. Energy penalty
     electricity_cost = torch.sum(
@@ -228,10 +284,7 @@ def compute_rewards(
         dim=-1,
     )
 
-    # 9. Feet air time 보상 (feet_contact 센서 없으므로 0 처리)
-    feet_air_time_reward = torch.zeros_like(progress_reward) * feet_air_time_weight
-
-    # 10. 모든 보상 합산
+    # 9. 모든 보상 합산
     reward_terms = {
         "progress_reward": progress_reward,
         "alive_reward": alive_reward,
@@ -252,7 +305,6 @@ def compute_rewards(
     total_reward = torch.where(reset_terminated, torch.ones_like(total_reward) * death_cost, total_reward)
 
     return total_reward, reward_terms
-
 
 @torch.jit.script
 def compute_intermediate_values(
