@@ -1,7 +1,7 @@
 from isaaclab.utils import configclass
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg
 
-# ✅ Master 환경에서 로봇 설정 가져오기
+# Master 환경에서 로봇 설정 가져오기
 from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env_cfg import Go2PiperMasterEnvCfg
 
 
@@ -18,6 +18,10 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.robot = master_cfg.robot_cfg.replace(
             prim_path="{ENV_REGEX_NS}/Robot"
         )
+
+        # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
+        self.scene.robot.init_state.pos = (0.0, 0.0, 0.42)
+        self.scene.robot.init_state.rot = (1.0, 0.0, 0.0, 0.0)
         
         # Height scanner 위치 지정 (base_link 에 부착)
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base_link"
@@ -31,6 +35,8 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Action scale 조정
         self.actions.joint_pos.scale = 0.25
 
+        self.actions.joint_pos.joint_names = "FL_.*|FR_.*|HL_.*|HR_.*"
+
         # Push 이벤트 제거 (원하면 활성화 가능)
         self.events.push_robot = None
         self.events.add_base_mass.params["mass_distribution_params"] = (-1.0, 3.0)
@@ -38,7 +44,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.events.base_external_force_torque.params["asset_cfg"].body_names = "base_link"
         # COM 위치 무작위화용 이벤트에서도 body 명칭 맞추기
         self.events.base_com.params["asset_cfg"].body_names = "base_link"
-        self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
+        self.events.reset_robot_joints.params["position_range"] = (0.0, 0.0)
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
             "velocity_range": {
