@@ -65,10 +65,13 @@ class ProjectChEnv(Go2PiperMasterEnv):
         self.prev_potentials = torch.zeros_like(self.potentials)
         
         # About feet
-        self.feet_link_names = ["FL_foot", "FR_foot", "RL_foot", "RR_foot"]
-        self.feet_indices = self.robot.find_link_indices(self.feet_link_names)
-        self.feet_air_time = torch.zeros(self.num_envs, device=self.device)
-        self.prev_contact = torch.zeros((self.num_envs, len(self.feet_indices)), device=self.device)
+        # self.feet_link_names = [name for name in self.robot.data.body_names if "foot" in name or "ankle" in name]
+        # self.feet_indices = [
+        # self.robot.data.body_names.index(name) for name in self.feet_link_names
+        # ]
+
+        # self.feet_air_time = torch.zeros(self.num_envs, device=self.device)
+        # self.prev_contact = torch.zeros((self.num_envs, len(self.feet_indices)), device=self.device)
         
         self.targets = self._sample_random_targets()
                 
@@ -80,7 +83,7 @@ class ProjectChEnv(Go2PiperMasterEnv):
 
     def _load_effort_limits_from_urdf(self):
         # URDF 경로: 패키지 기준으로 절대경로 생성
-        urdf_path = Path(__file__).parent.parent / "assets" / "go2_piper_integrated.urdf"
+        urdf_path = Path(__file__).parent.parent.parent.parent / "assets" / "go2_piper_integrated.urdf"
         urdf_path = urdf_path.resolve()
 
         effort_limits = []
@@ -96,22 +99,23 @@ class ProjectChEnv(Go2PiperMasterEnv):
     def _sample_random_targets(self):
         # X,Y 축 방향으로 무작위 목표 위치 설정
         random_xy = torch.rand((self.num_envs, 2), device=self.device) * 4.0 - 2.0
-        fixed_z = torch.zeros((self.num_envs,1), device=self.device)
+        fixed_z = torch.zeros((self.num_envs, 1), device=self.device)
         targets = torch.cat([random_xy, fixed_z], dim=1) + self.scene.env_origins.to(dtype=torch.float32)
         return targets
 
-    def _update_feet_air_time(self):
-        contact_forces = self.robot.data.contact_forces[:, self.feet_indices]
-        contact = contact_forces.norm(dim=-1) > 1e-3
-        
-        just_landed = (contact.float() - self.prev_contact) < 0
-        
-        # 각 발별 air time 계산 후 평균 사용
-        self.feet_air_time += (~contact).float().mean(dim=-1) * self.cfg.sim.dt
-        reset_mask = just_landed.any(dim=-1)
-        self.feet_air_time = torch.where(reset_mask, torch.zeros_like(self.feet_air_time), self.feet_air_time)
+    # def _update_feet_air_time(self):
+    #     contact_sensor = self.scene.sensors["feet_contact"]
+    #     forces = contact_sensor.data.net_forces_w[:, self.feet_indices]
+    #     contact = forces.norm(dim=-1) > 1e-3
 
-        self.prev_contact = contact.float()
+    #     just_landed = (contact.float() - self.prev_contact) < 0
+        
+    #     # 각 발별 air time 계산 후 평균 사용
+    #     self.feet_air_time += (~contact).float().mean(dim=-1) * self.cfg.sim.dt
+    #     reset_mask = just_landed.any(dim=-1)
+    #     self.feet_air_time = torch.where(reset_mask, torch.zeros_like(self.feet_air_time), self.feet_air_time)
+
+    #     self.prev_contact = contact.float()
     
     # Apply action to the robot
     def _apply_action(self):
@@ -158,9 +162,9 @@ class ProjectChEnv(Go2PiperMasterEnv):
         if not MASTER_AVAILABLE:
             return torch.zeros(self.num_envs, device=self.device)
         self._compute_intermediate_values()
-        self._update_feet_air_time()
+        # self._update_feet_air_time()
         
-        feet_air_time_reward = self.feet_air_time * self.cfg.feet_air_time_weight
+        # feet_air_time_reward = self.feet_air_time * self.cfg.feet_air_time_weight
 
         total_reward, reward_terms = compute_rewards(
             self.actions,
@@ -187,7 +191,7 @@ class ProjectChEnv(Go2PiperMasterEnv):
             self.cfg.dof_torques_l2_weight,
             self.cfg.dof_acc_l2_weight,
             self.cfg.flat_orientation_l2_weight,
-            feet_air_time_reward,
+            # feet_air_time_reward,
         )
         self.extras["episode"] = reward_terms
         return total_reward
@@ -215,7 +219,7 @@ class ProjectChEnv(Go2PiperMasterEnv):
         )
         return {"policy": obs}
 
-# new reward function 0728:17:17
+
 @torch.jit.script
 def compute_rewards(
     actions: torch.Tensor,
@@ -242,7 +246,7 @@ def compute_rewards(
     dof_torques_l2_weight: float,
     dof_acc_l2_weight: float,
     flat_orientation_l2_weight: float,
-    feet_air_time_reward: torch.Tensor,
+    # feet_air_time_reward: torch.Tensor,
 ):
     # 1. 기본 보상 (progress + alive)
     progress_reward = potentials - prev_potentials
@@ -297,7 +301,7 @@ def compute_rewards(
         "acc_penalty": acc_penalty,
         "action_penalty": -actions_cost_scale * torch.sum(actions**2, dim=-1),
         "energy_penalty": -energy_cost_scale * electricity_cost,
-        "feet_air_time_reward": feet_air_time_reward,
+        # "feet_air_time_reward": feet_air_time_reward,
     }
 
     total_reward = torch.stack(list(reward_terms.values()), dim=0).sum(dim=0)

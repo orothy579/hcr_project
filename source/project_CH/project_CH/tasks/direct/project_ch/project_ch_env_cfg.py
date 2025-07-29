@@ -37,6 +37,7 @@ class ProjectChEnvCfg(Go2PiperMasterEnvCfg):
     energy_cost_scale: float = 0.02
     track_lin_vel_xy_exp_weight: float = 4.0
     track_ang_vel_z_exp_weight: float = 0.75
+    
     #과도한 토크·가속도 사용을 억제하고, 안정적인 제어를 유도
     dof_torques_l2_weight: float = -5e-5
     dof_acc_l2_weight: float = -1e-7

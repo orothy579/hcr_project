@@ -19,7 +19,7 @@ from .project_ch_env_cfg import ProjectChEnvCfg
 ##
 
 gym.register(
-    id="Project-CH-Direct-v0",
+    id="Template-Project-CH-Direct-v0",
     entry_point="project_CH.tasks.direct.project_ch:ProjectChEnv",
     disable_env_checker=True,
     kwargs={

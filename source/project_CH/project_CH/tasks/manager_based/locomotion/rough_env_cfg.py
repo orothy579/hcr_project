@@ -2,16 +2,23 @@ from isaaclab.utils import configclass
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg
 
 # ✅ Master 환경에서 로봇 설정 가져오기
-from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env import Go2PiperMasterEnv
+from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env_cfg import Go2PiperMasterEnvCfg
+
 
 @configclass
 class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        # ✅ Master 환경의 로봇 config 사용
-        self.scene.robot = Go2PiperMasterEnv.cfg.scene.robot.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        # Master의 robot_cfg를 scene.robots에 추가
+        master_cfg = Go2PiperMasterEnvCfg()
 
+        # manager_based 환경에서는 기본적으로 단일 `scene.robot` 설정만 필요하다.
+        # Master 프로젝트에서 가져온 로봇 설정을 그대로 할당한다.
+        self.scene.robot = master_cfg.robot_cfg.replace(
+            prim_path="{ENV_REGEX_NS}/Robot"
+        )
+        
         # Height scanner 위치 지정
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"
 
@@ -27,8 +34,8 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Push 이벤트 제거 (원하면 활성화 가능)
         self.events.push_robot = None
         self.events.add_base_mass.params["mass_distribution_params"] = (-1.0, 3.0)
-        self.events.add_base_mass.params["asset_cfg"].body_names = "base"
-        self.events.base_external_force_torque.params["asset_cfg"].body_names = "base"
+        self.events.add_base_mass.params["asset_cfg"].body_names = "base_link"
+        self.events.base_external_force_torque.params["asset_cfg"].body_names = "base_link"
         self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
@@ -43,7 +50,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         }
 
         # Reward 설정
-        self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"
+        self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_calf"
         self.rewards.feet_air_time.weight = 0.01
         self.rewards.undesired_contacts = None
         self.rewards.dof_torques_l2.weight = -0.0002
@@ -52,7 +59,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.dof_acc_l2.weight = -2.5e-7
 
         # Termination 조건 설정
-        self.terminations.base_contact.params["sensor_cfg"].body_names = "base"
+        self.terminations.base_contact.params["sensor_cfg"].body_names = "base_link"
 
 
 @configclass
