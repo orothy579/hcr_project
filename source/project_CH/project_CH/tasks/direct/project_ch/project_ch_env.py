@@ -10,6 +10,7 @@ from __future__ import annotations
 import torch
 import isaacsim.core.utils.torch as torch_utils
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from isaacsim.core.utils.torch.rotations import compute_heading_and_up, compute_rot, quat_conjugate
 from .project_ch_env_cfg import ProjectChEnvCfg
 
