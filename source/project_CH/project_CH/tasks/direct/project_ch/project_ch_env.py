@@ -45,8 +45,7 @@ class ProjectChEnv(Go2PiperMasterEnv):
             print("[WARNING] Running with fallback environment")
         
         # Locomotion-related states
-        self.action_scale = 1.0
-        self.joint_gears = torch.ones(self.robot.num_joints, device=self.device)
+        self.joint_gears = torch.ones(self.cfg.joint_gears, device=self.device)
         self.motor_effort_ratio = torch.ones_like(self.joint_gears)
         
         self.potentials = torch.zeros(self.num_envs, device=self.device)
@@ -57,12 +56,13 @@ class ProjectChEnv(Go2PiperMasterEnv):
         
         self.start_rotation = torch.tensor([1, 0, 0, 0], dtype=torch.float32, device=self.device)
         self.inv_start_rot = quat_conjugate(self.start_rotation).repeat((self.num_envs, 1))
+        
         self.basis_vec0 = torch.tensor([1, 0, 0], dtype=torch.float32, device=self.device).repeat((self.num_envs, 1))
         self.basis_vec1 = torch.tensor([0, 0, 1], dtype=torch.float32, device=self.device).repeat((self.num_envs, 1))
 
     # Apply action to the robot
     def _apply_action(self):
-        forces = self.action_scale * self.joint_gears * self.actions
+        forces = self.cfg.action_scale * self.joint_gears * self.actions
         self.robot.set_joint_effort_target(forces)
 
     def _compute_intermediate_values(self):
@@ -102,7 +102,6 @@ class ProjectChEnv(Go2PiperMasterEnv):
         )
 
     def _get_rewards(self) -> torch.Tensor:
-        """CH-specific reward function."""
         if not MASTER_AVAILABLE:
             return torch.zeros(self.num_envs, device=self.device)
         self._compute_intermediate_values()
@@ -130,8 +129,8 @@ class ProjectChEnv(Go2PiperMasterEnv):
             self.cfg.track_ang_vel_z_exp_weight,
             self.cfg.dof_torques_l2_weight,
             self.cfg.dof_acc_l2_weight,
-            self.cfg.feet_air_time_weight,
             self.cfg.flat_orientation_l2_weight,
+            self.cfg.feet_air_time_weight,
         )
         self.extras["episode"] = reward_terms
         return total_reward
@@ -158,61 +157,6 @@ class ProjectChEnv(Go2PiperMasterEnv):
             dim=-1,
         )
         return {"policy": obs}
-
-
-# old reward function -> from locomotion.py
-# @torch.jit.script
-# def compute_rewards(
-#     actions: torch.Tensor,
-#     reset_terminated: torch.Tensor,
-#     up_weight: float,
-#     heading_weight: float,
-#     heading_proj: torch.Tensor,
-#     up_proj: torch.Tensor,
-#     dof_vel: torch.Tensor,
-#     dof_pos_scaled: torch.Tensor,
-#     potentials: torch.Tensor,
-#     prev_potentials: torch.Tensor,
-#     actions_cost_scale: float,
-#     energy_cost_scale: float,
-#     dof_vel_scale: float,
-#     death_cost: float,
-#     alive_reward_scale: float,
-#     motor_effort_ratio: torch.Tensor,
-# ):
-#     heading_weight_tensor = torch.ones_like(heading_proj) * heading_weight
-#     heading_reward = torch.where(heading_proj > 0.8, heading_weight_tensor, heading_weight * heading_proj / 0.8)
-
-#     # aligning up axis of robot and environment
-#     up_reward = torch.zeros_like(heading_reward)
-#     up_reward = torch.where(up_proj > 0.93, up_reward + up_weight, up_reward)
-
-#     # energy penalty for movement
-#     actions_cost = torch.sum(actions**2, dim=-1)
-#     electricity_cost = torch.sum(
-#         torch.abs(actions * dof_vel * dof_vel_scale) * motor_effort_ratio.unsqueeze(0),
-#         dim=-1,
-#     )
-
-#     # dof at limit cost
-#     dof_at_limit_cost = torch.sum(dof_pos_scaled > 0.98, dim=-1)
-
-#     # reward for duration of staying alive
-#     alive_reward = torch.ones_like(potentials) * alive_reward_scale
-#     progress_reward = potentials - prev_potentials
-
-#     total_reward = (
-#         progress_reward
-#         + alive_reward
-#         + up_reward
-#         + heading_reward
-#         - actions_cost_scale * actions_cost
-#         - energy_cost_scale * electricity_cost
-#         - dof_at_limit_cost
-#     )
-#     # adjust reward for fallen agents
-#     total_reward = torch.where(reset_terminated, torch.ones_like(total_reward) * death_cost, total_reward)
-#     return total_reward
 
 # new reward function 0728:17:17
 @torch.jit.script
