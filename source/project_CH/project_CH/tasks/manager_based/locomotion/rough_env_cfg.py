@@ -3,9 +3,13 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import Lo
 
 # Master 환경에서 로봇 설정 가져오기
 from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env_cfg import Go2PiperMasterEnvCfg
+from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts
+from isaaclab.managers import SceneEntityCfg
+
 
 from go2_piper_master.assets.go2_piper_robot import GO2_PIPER_CFG
 from isaaclab.assets import ArticulationCfg
+
 
 CUSTOM_GO2_PIPER_CFG = GO2_PIPER_CFG.replace(
     spawn=GO2_PIPER_CFG.spawn.replace(merge_fixed_joints=False)
@@ -65,8 +69,19 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Reward 설정
         self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"
-        self.rewards.feet_air_time.weight = 0.02
-        self.rewards.undesired_contacts = None
+        self.rewards.feet_air_time.weight = 0.01
+        # self.rewards.undesired_contacts = None
+        # 무릎 닿으면 큰 페널티
+        self.rewards.undesired_contacts = self.rewards.feet_air_time.__class__(
+            func=undesired_contacts,
+            weight=-0.3,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    name="contact_forces",
+                    body_names=".*_thigh|.*_shin"
+                )
+            }
+        )
         self.rewards.dof_torques_l2.weight = -0.0002
         self.rewards.track_lin_vel_xy_exp.weight = 2.5
         self.rewards.track_ang_vel_z_exp.weight = 0.75

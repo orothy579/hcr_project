@@ -114,3 +114,15 @@ def stand_still_joint_deviation_l1(
     command = env.command_manager.get_command(command_name)
     # Penalize motion when command is nearly zero.
     return mdp.joint_deviation_l1(env, asset_cfg) * (torch.norm(command[:, :2], dim=1) < command_threshold)
+
+
+def undesired_contacts(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Penalize contacts of undesired body parts (knees, thighs)."""
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    
+    # shape: (num_envs, history_len, num_bodies)
+    contact_forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :].norm(dim=-1)
+    
+    # history와 body 차원을 모두 합산하여 (num_envs,) shape으로 만듦
+    penalty = torch.sum(contact_forces, dim=(1, 2))
+    return penalty
