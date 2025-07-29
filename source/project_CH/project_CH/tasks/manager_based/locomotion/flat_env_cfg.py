@@ -8,6 +8,10 @@ class Go2PiperFlatEnvCfg(Go2PiperRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
+        # 보상 weight 변경 (flat 환경용)
+        self.rewards.flat_orientation_l2.weight = -2.5
+        self.rewards.feet_air_time.weight = 0.25
+
         # Terrain을 평평한 plane으로 변경
         self.scene.terrain.terrain_type = "plane"
         self.scene.terrain.terrain_generator = None
@@ -18,10 +22,6 @@ class Go2PiperFlatEnvCfg(Go2PiperRoughEnvCfg):
 
         # Terrain curriculum 제거
         self.curriculum.terrain_levels = None
-
-        # 보상 weight 변경 (flat 환경용)
-        self.rewards.flat_orientation_l2.weight = -2.5
-        self.rewards.feet_air_time.weight = 0.25
 
 
 @configclass
