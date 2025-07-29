@@ -19,8 +19,8 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             prim_path="{ENV_REGEX_NS}/Robot"
         )
         
-        # Height scanner 위치 지정
-        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base"
+        # Height scanner 위치 지정 (base_link 에 부착)
+        self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base_link"
 
         # Terrain 스케일 조정 (go2 크기에 맞춤)
         if self.scene.terrain.terrain_generator is not None:
@@ -36,6 +36,8 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.events.add_base_mass.params["mass_distribution_params"] = (-1.0, 3.0)
         self.events.add_base_mass.params["asset_cfg"].body_names = "base_link"
         self.events.base_external_force_torque.params["asset_cfg"].body_names = "base_link"
+        # COM 위치 무작위화용 이벤트에서도 body 명칭 맞추기
+        self.events.base_com.params["asset_cfg"].body_names = "base_link"
         self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
         self.events.reset_base.params = {
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
