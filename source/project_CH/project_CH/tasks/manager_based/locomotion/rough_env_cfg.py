@@ -28,7 +28,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
         self.scene.robot.init_state.pos = (0.0, 0.0, 0.42)
         self.scene.robot.init_state.rot = (1.0, 0.0, 0.0, 0.0)
-        self.scene.robot.actuators["base_actuators"].stiffness = 80.0
+        self.scene.robot.actuators["base_actuators"].stiffness = 100.0
         self.scene.robot.actuators["base_actuators"].damping = 6.0
 
         # Height scanner 위치 지정 (base_link 에 부착)
@@ -74,7 +74,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 무릎 닿으면 큰 페널티
         self.rewards.undesired_contacts = self.rewards.feet_air_time.__class__(
             func=undesired_contacts,
-            weight=-0.3,
+            weight=-0.5,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     name="contact_forces",
@@ -83,7 +83,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             }
         )
         self.rewards.dof_torques_l2.weight = -0.0002
-        self.rewards.track_lin_vel_xy_exp.weight = 2.5
+        self.rewards.track_lin_vel_xy_exp.weight = 2.0
         self.rewards.track_ang_vel_z_exp.weight = 0.75
         self.rewards.dof_acc_l2.weight = -2.5e-7
 
