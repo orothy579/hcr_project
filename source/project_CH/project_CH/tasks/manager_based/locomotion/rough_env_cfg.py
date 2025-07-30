@@ -75,7 +75,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 무릎 닿으면 페널티
         self.rewards.undesired_contacts = self.rewards.feet_air_time.__class__(
             func=undesired_contacts,
-            weight=-1.0,
+            weight=-0.5,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     name="contact_forces",
@@ -86,7 +86,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         self.rewards.foot_contacts = self.rewards.feet_air_time.__class__(
             func=desired_contacts,
-            weight=1.0,
+            weight=0.5,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     name="contact_forces",
