@@ -126,3 +126,18 @@ def undesired_contacts(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> to
     # history와 body 차원을 모두 합산하여 (num_envs,) shape으로 만듦
     penalty = torch.sum(contact_forces, dim=(1, 2))
     return penalty
+
+
+def desired_contacts(env, sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """
+    Give reward when specific body parts are in contact with the ground.
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    # 접촉 힘 계산
+    contact_forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :]
+    contact_norm = contact_forces.norm(dim=-1).max(dim=1)[0]
+    # 1N 이상 접촉 시 보상
+    contacts = (contact_norm > 1.0).float()
+    # body 개수 기준 합산
+    reward = torch.sum(contacts, dim=1)
+    return reward

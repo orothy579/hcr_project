@@ -3,7 +3,7 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import Lo
 
 # Master 환경에서 로봇 설정 가져오기
 from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env_cfg import Go2PiperMasterEnvCfg
-from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts
+from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts, desired_contacts
 from isaaclab.managers import SceneEntityCfg
 
 
@@ -29,7 +29,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.robot.init_state.pos = (0.0, 0.0, 0.42)
         self.scene.robot.init_state.rot = (1.0, 0.0, 0.0, 0.0)
         self.scene.robot.actuators["base_actuators"].stiffness = 100.0
-        self.scene.robot.actuators["base_actuators"].damping = 6.0
+        self.scene.robot.actuators["base_actuators"].damping = 10.0
 
         # Height scanner 위치 지정 (base_link 에 부착)
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base_link"
@@ -71,10 +71,11 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"
         self.rewards.feet_air_time.weight = 0.01
         # self.rewards.undesired_contacts = None
-        # 무릎 닿으면 큰 페널티
+
+        # 무릎 닿으면 페널티
         self.rewards.undesired_contacts = self.rewards.feet_air_time.__class__(
             func=undesired_contacts,
-            weight=-1,
+            weight=-1.0,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     name="contact_forces",
@@ -82,8 +83,20 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 )
             }
         )
+
+        self.rewards.foot_contacts = self.rewards.feet_air_time.__class__(
+            func=desired_contacts,
+            weight=1.0,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    name="contact_forces",
+                    body_names=".*_foot"
+                )
+            }
+        )
+
         self.rewards.dof_torques_l2.weight = -0.0002
-        self.rewards.track_lin_vel_xy_exp.weight = 2.0
+        self.rewards.track_lin_vel_xy_exp.weight = 3
         self.rewards.track_ang_vel_z_exp.weight = 0.75
         self.rewards.dof_acc_l2.weight = -2.5e-7
 
