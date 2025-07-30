@@ -74,11 +74,11 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 무릎 닿으면 큰 페널티
         self.rewards.undesired_contacts = self.rewards.feet_air_time.__class__(
             func=undesired_contacts,
-            weight=-0.5,
+            weight=-1,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     name="contact_forces",
-                    body_names=".*_thigh|.*_shin"
+                    body_names=".*_calf|.*_thigh|.*_shin"
                 )
             }
         )
