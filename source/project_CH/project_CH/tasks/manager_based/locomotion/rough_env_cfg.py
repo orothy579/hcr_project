@@ -79,11 +79,12 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             params={
                 "sensor_cfg": SceneEntityCfg(
                     name="contact_forces",
-                    body_names=".*_calf|.*_thigh|.*_shin"
+                    body_names=".*_calf|.*_thigh|.*_hip"
                 )
             }
         )
 
+        # 발이 닿아있으면 보상
         self.rewards.foot_contacts = self.rewards.feet_air_time.__class__(
             func=desired_contacts,
             weight=0.5,
