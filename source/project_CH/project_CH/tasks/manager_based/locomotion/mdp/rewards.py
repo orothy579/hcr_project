@@ -203,3 +203,17 @@ def phase_gait_reward(env):
     if grf.device != device:
         grf = grf.to(device)
     return -(grf * torch.sin(ph)).sum(dim=1)
+
+
+def body_height_reward(env, target_height: float):
+    # ManagerBasedRLEnv → InteractiveScene
+    scene = env.scene
+
+    # 로봇 객체 가져오기
+    robot = scene["robot"]  # 딕셔너리처럼 접근
+
+    # 월드 좌표계 기준 루트 z 위치 ==> sim2real 시 z 위치 알 수 있는 센서 필요
+    z_pos = robot.data.root_pos_w[:, 2]
+
+    return torch.exp(- (z_pos - target_height)**2 * 20.0)
+

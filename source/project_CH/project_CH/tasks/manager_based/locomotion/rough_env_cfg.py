@@ -3,7 +3,7 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import Lo
 
 # Master 환경에서 로봇 설정 가져오기
 from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env_cfg import Go2PiperMasterEnvCfg
-from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts, desired_contacts, get_leg_phase, phase_gait_reward
+from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts, desired_contacts, get_leg_phase, phase_gait_reward, body_height_reward
 from isaaclab.managers import SceneEntityCfg
 
 
@@ -82,7 +82,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 무릎 닿으면 페널티
         self.rewards.undesired_contacts = self.rewards.feet_air_time.__class__(
             func=undesired_contacts,
-            weight=-0.5,
+            weight=-0.25,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     name="contact_forces",
@@ -94,7 +94,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 발이 닿아있으면 보상
         self.rewards.foot_contacts = self.rewards.feet_air_time.__class__(
             func=desired_contacts,
-            weight=0.5,
+            weight=0.25,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     name="contact_forces",
@@ -108,6 +108,14 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             func=phase_gait_reward,
             weight=0.4,
             params={}
+        )
+
+        self.rewards.body_height = self.rewards.feet_air_time.__class__(
+            func=body_height_reward,
+            weight=0.5,
+            params={                       
+                "target_height": 0.42
+            }
         )
 
         self.rewards.dof_torques_l2.weight = -0.0002
