@@ -3,14 +3,15 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import Lo
 
 # Master 환경에서 로봇 설정 가져오기
 from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env_cfg import Go2PiperMasterEnvCfg
-from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts, desired_contacts
+from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts, desired_contacts, get_leg_phase, phase_gait_reward
 from isaaclab.managers import SceneEntityCfg
 
 
 from go2_piper_master.assets.go2_piper_robot import GO2_PIPER_CFG
 from isaaclab.assets import ArticulationCfg
+from isaaclab.managers import ObservationTermCfg
 
-
+# calf 와 foot 을 분리하기 위해 필요
 CUSTOM_GO2_PIPER_CFG = GO2_PIPER_CFG.replace(
     spawn=GO2_PIPER_CFG.spawn.replace(merge_fixed_joints=False)
 )
@@ -67,6 +68,12 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             },
         }
 
+        self.observations.policy.leg_phase = ObservationTermCfg(
+            func=get_leg_phase,
+            params={},
+            noise=None,
+            scale=1.0
+        )
         # Reward 설정
         self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"
         self.rewards.feet_air_time.weight = 0.01
@@ -94,6 +101,13 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                     body_names=".*_foot"
                 )
             }
+        )
+
+        # phase 기반 reward 추가
+        self.rewards.phase_feedback = self.rewards.feet_air_time.__class__(
+            func=phase_gait_reward,
+            weight=0.4,
+            params={}
         )
 
         self.rewards.dof_torques_l2.weight = -0.0002
