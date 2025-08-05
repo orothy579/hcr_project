@@ -3,7 +3,7 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import Lo
 
 # Master 환경에서 로봇 설정 가져오기
 from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env_cfg import Go2PiperMasterEnvCfg
-from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts, desired_contacts, body_height_reward
+from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts, desired_contacts, body_height_reward, suppress_front_leg_crossing_when_forward
 from isaaclab.managers import SceneEntityCfg
 
 
@@ -27,8 +27,6 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
 
         # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
-        self.scene.robot.init_state.pos = (0.0, 0.0, 0.42)
-        self.scene.robot.init_state.rot = (1.0, 0.0, 0.0, 0.0)
         self.scene.robot.actuators["base_actuators"].stiffness = 100.0
         self.scene.robot.actuators["base_actuators"].damping = 10.0
 
@@ -74,6 +72,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         #     noise=None,
         #     scale=1.0
         # )
+
         # Reward 설정
         self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"
         self.rewards.feet_air_time.weight = 0.01
@@ -118,8 +117,14 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             }
         )
 
+        self.rewards.no_cross_forward = self.rewards.feet_air_time.__class__(
+            func=suppress_front_leg_crossing_when_forward,
+            weight=-0.2,
+            params={"vel_threshold": 0.2}
+        )
+
         self.rewards.dof_torques_l2.weight = -0.0002
-        self.rewards.track_lin_vel_xy_exp.weight = 3
+        self.rewards.track_lin_vel_xy_exp.weight = 3.0
         self.rewards.track_ang_vel_z_exp.weight = 0.75
         self.rewards.dof_acc_l2.weight = -2.5e-7
 
