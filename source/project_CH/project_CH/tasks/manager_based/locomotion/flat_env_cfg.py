@@ -10,7 +10,7 @@ class Go2PiperFlatEnvCfg(Go2PiperRoughEnvCfg):
 
         # 보상 weight 변경 (flat 환경용)
         self.rewards.flat_orientation_l2.weight = -2.5
-        self.rewards.feet_air_time.weight = 0.02
+        self.rewards.feet_air_time.weight = 0.25
 
         # Terrain을 평평한 plane으로 변경
         self.scene.terrain.terrain_type = "plane"

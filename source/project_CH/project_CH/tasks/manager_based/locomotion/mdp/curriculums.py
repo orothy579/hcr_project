@@ -7,6 +7,9 @@
 
 The functions can be passed to the :class:`isaaclab.managers.CurriculumTermCfg` object to enable
 the curriculum introduced by the function.
+
+에이전트가 너무 어려운 환경에서 처음부터 학습하지 않도록,
+간단한 상황부터 시작해서 점진적으로 난이도를 높임
 """
 
 from __future__ import annotations

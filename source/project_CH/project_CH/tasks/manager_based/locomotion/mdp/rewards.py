@@ -145,64 +145,64 @@ import torch
 import math
 
 
-def get_leg_phase(env):
-    """각 다리의 phase oscillator를 업데이트하여 반환.
+# def get_leg_phase(env):
+#     """각 다리의 phase oscillator를 업데이트하여 반환.
 
-    ORCAgym과 Zhang et al.(2024), Shao et al.(2022)의 연구 아이디어를 참고함.
-    ground reaction force(GRF) 피드백을 통해 각 다리의 위상을 동기화.
+#     ORCAgym과 Zhang et al.(2024), Shao et al.(2022)의 연구 아이디어를 참고함.
+#     ground reaction force(GRF) 피드백을 통해 각 다리의 위상을 동기화.
 
-    Returns:
-        torch.Tensor: 업데이트된 각 다리의 phase 값.
-    """
-    # device 파악 (IsaacLab은 대부분 env.device 또는 env.sim_device 존재)
-    device = getattr(env, "device", getattr(env, "sim_device", "cpu"))
-    num_envs = getattr(env, "num_envs", 1)
+#     Returns:
+#         torch.Tensor: 업데이트된 각 다리의 phase 값.
+#     """
+#     # device 파악 (IsaacLab은 대부분 env.device 또는 env.sim_device 존재)
+#     device = getattr(env, "device", getattr(env, "sim_device", "cpu"))
+#     num_envs = getattr(env, "num_envs", 1)
 
-    # phases 동적 생성 또는 device mismatch 시 재할당
-    if (not hasattr(env, 'phases')) or (getattr(env, 'phases').device != device):
-        env.phases = torch.rand(num_envs, 4, device=device) * 2 * torch.pi
+#     # phases 동적 생성 또는 device mismatch 시 재할당
+#     if (not hasattr(env, 'phases')) or (getattr(env, 'phases').device != device):
+#         env.phases = torch.rand(num_envs, 4, device=device) * 2 * torch.pi
 
-    # obs, grf 없으면 더미 반환 (초기 dimension 체크용)
-    if not hasattr(env, 'obs') or 'grf' not in getattr(env, 'obs', {}):
-        return torch.zeros_like(env.phases, device=device)
+#     # obs, grf 없으면 더미 반환 (초기 dimension 체크용)
+#     if not hasattr(env, 'obs') or 'grf' not in getattr(env, 'obs', {}):
+#         return torch.zeros_like(env.phases, device=device)
 
-    ph = env.phases
-    grf = env.obs["grf"]
-    if grf.device != device:
-        grf = grf.to(device)
-    cmd_vx = env.obs["base_vel"][:, 0].to(device)
-    omega = torch.where(cmd_vx.abs() <= 0.5, 1.0, (1.5 + cmd_vx.abs()).clamp(max=4.0))
-    sigma = torch.where(cmd_vx.abs() <= 0.5, 4.0, 1.0)
-    xi = torch.where(cmd_vx.abs() <= 0.5, 1.0, 0.0)
-    dphi = 2 * math.pi * omega - sigma * grf * (torch.cos(ph) + xi)
-    ph = (ph + dphi * getattr(env, 'dt', 0.02)) % (2 * math.pi)
-    env.phases = ph
-    return ph
+#     ph = env.phases
+#     grf = env.obs["grf"]
+#     if grf.device != device:
+#         grf = grf.to(device)
+#     cmd_vx = env.obs["base_vel"][:, 0].to(device)
+#     omega = torch.where(cmd_vx.abs() <= 0.5, 1.0, (1.5 + cmd_vx.abs()).clamp(max=4.0))
+#     sigma = torch.where(cmd_vx.abs() <= 0.5, 4.0, 1.0)
+#     xi = torch.where(cmd_vx.abs() <= 0.5, 1.0, 0.0)
+#     dphi = 2 * math.pi * omega - sigma * grf * (torch.cos(ph) + xi)
+#     ph = (ph + dphi * getattr(env, 'dt', 0.02)) % (2 * math.pi)
+#     env.phases = ph
+#     return ph
 
 
-def phase_gait_reward(env):
-    """phase와 GRF를 이용한 보상 함수.
+# def phase_gait_reward(env):
+#     """phase와 GRF를 이용한 보상 함수.
 
-    ORCAgym의 gait similarity 보상 구조를 참고하여 구현.
-    stance/swing 타이밍이 위상과 일치할수록 보상을 높임.
+#     ORCAgym의 gait similarity 보상 구조를 참고하여 구현.
+#     stance/swing 타이밍이 위상과 일치할수록 보상을 높임.
 
-    Returns:
-        torch.Tensor: 각 환경 배치에 대한 보상 값.
-    """
-    device = getattr(env, "device", getattr(env, "sim_device", "cpu"))
+#     Returns:
+#         torch.Tensor: 각 환경 배치에 대한 보상 값.
+#     """
+#     device = getattr(env, "device", getattr(env, "sim_device", "cpu"))
 
-    # obs가 아직 없으면 0 텐서 반환 (환경 초기화 단계 등)
-    if not hasattr(env, "obs") or ("leg_phase" not in getattr(env, "obs", {})) or ("grf" not in getattr(env, "obs", {})):
-        num_envs = getattr(env, "num_envs", 1)
-        return torch.zeros(num_envs, device=device)
+#     # obs가 아직 없으면 0 텐서 반환 (환경 초기화 단계 등)
+#     if not hasattr(env, "obs") or ("leg_phase" not in getattr(env, "obs", {})) or ("grf" not in getattr(env, "obs", {})):
+#         num_envs = getattr(env, "num_envs", 1)
+#         return torch.zeros(num_envs, device=device)
 
-    ph = env.obs["leg_phase"]
-    if ph.device != device:
-        ph = ph.to(device)
-    grf = env.obs["grf"]
-    if grf.device != device:
-        grf = grf.to(device)
-    return -(grf * torch.sin(ph)).sum(dim=1)
+#     ph = env.obs["leg_phase"]
+#     if ph.device != device:
+#         ph = ph.to(device)
+#     grf = env.obs["grf"]
+#     if grf.device != device:
+#         grf = grf.to(device)
+#     return -(grf * torch.sin(ph)).sum(dim=1)
 
 
 def body_height_reward(env, target_height: float):
