@@ -3,7 +3,7 @@ from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import Lo
 
 # Master 환경에서 로봇 설정 가져오기
 from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env_cfg import Go2PiperMasterEnvCfg
-from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts, desired_contacts, body_height_reward, suppress_front_leg_crossing_when_forward
+from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts, desired_contacts, body_height_reward, suppress_front_leg_crossing_when_forward, get_leg_phase, phase_gait_reward, feet_slide
 from isaaclab.managers import SceneEntityCfg
 
 
@@ -66,12 +66,12 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             },
         }
 
-        # self.observations.policy.leg_phase = ObservationTermCfg(
-        #     func=get_leg_phase,
-        #     params={},
-        #     noise=None,
-        #     scale=1.0
-        # )
+        self.observations.policy.leg_phase = ObservationTermCfg(
+            func=get_leg_phase,
+            params={},
+            noise=None,
+            scale=1.0
+        )
 
         # Reward 설정
         self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"
@@ -102,12 +102,12 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             }
         )
 
-        # # phase 기반 reward 추가
-        # self.rewards.phase_feedback = self.rewards.feet_air_time.__class__(
-        #     func=phase_gait_reward,
-        #     weight=0.4,
-        #     params={}
-        # )
+        # phase 기반 reward 추가
+        self.rewards.phase_feedback = self.rewards.feet_air_time.__class__(
+            func=phase_gait_reward,
+            weight=0.05,
+            params={}
+        )
 
         self.rewards.body_height = self.rewards.feet_air_time.__class__(
             func=body_height_reward,
@@ -122,9 +122,24 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             weight=-0.2,
             params={"vel_threshold": 0.2}
         )
+        
+        self.rewards.feet_slide = self.rewards.feet_air_time.__class__(
+            func=feet_slide,
+            weight=-0.05,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    name="contact_forces",
+                    body_names="FL_foot|FR_foot|HL_foot|HR_foot"
+                ),
+                "asset_cfg": SceneEntityCfg(
+                    name="robot",
+                    body_names="FL_foot|FR_foot|HL_foot|HR_foot"
+                )
+            }
+        )
 
         self.rewards.dof_torques_l2.weight = -0.0002
-        self.rewards.track_lin_vel_xy_exp.weight = 3.0
+        self.rewards.track_lin_vel_xy_exp.weight = 2.5
         self.rewards.track_ang_vel_z_exp.weight = 0.75
         self.rewards.dof_acc_l2.weight = -2.5e-7
 
