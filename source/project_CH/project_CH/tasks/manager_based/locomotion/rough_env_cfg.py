@@ -1,9 +1,8 @@
 from isaaclab.utils import configclass
-from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg
+from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg # 기본 보상함수 있음
 
 # Master 환경에서 로봇 설정 가져오기
 from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env_cfg import Go2PiperMasterEnvCfg
-from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts, desired_contacts, body_height_reward, suppress_front_leg_crossing_when_forward, feet_slide
 from isaaclab.managers import SceneEntityCfg
 
 
@@ -26,9 +25,9 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             prim_path="{ENV_REGEX_NS}/Robot"
         )
 
-        # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
-        self.scene.robot.actuators["base_actuators"].stiffness = 100.0
-        self.scene.robot.actuators["base_actuators"].damping = 10.0
+        # # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
+        # self.scene.robot.actuators["base_actuators"].stiffness = 100.0
+        # self.scene.robot.actuators["base_actuators"].damping = 10.0
 
         # Height scanner 위치 지정 (base_link 에 부착)
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base_link"
@@ -42,16 +41,14 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Action scale 조정
         self.actions.joint_pos.scale = 0.25
 
+        # piper 관절 제외
         self.actions.joint_pos.joint_names = "FL_.*|FR_.*|HL_.*|HR_.*"
 
-        # Push 이벤트 제거 (원하면 활성화 가능)
+        # Push 이벤트 제거
         self.events.push_robot = None
-
-        # self.events.add_base_mass = None
         self.events.add_base_mass.params["mass_distribution_params"] = (-1.0, 3.0)
         self.events.add_base_mass.params["asset_cfg"].body_names = "base_link"
         self.events.base_external_force_torque.params["asset_cfg"].body_names = "base_link"
-        # COM 위치 무작위화용 이벤트에서도 body 명칭 맞추기
         self.events.base_com.params["asset_cfg"].body_names = "base_link"
         self.events.reset_robot_joints.params["position_range"] = (1.0, 1.0)
         self.events.reset_base.params = {
@@ -66,66 +63,12 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             },
         }
 
-        # Reward 설정
+        # Rewards
         self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"
         self.rewards.feet_air_time.weight = 0.01
-        # self.rewards.undesired_contacts = None
-
-        # 무릎 닿으면 페널티
-        self.rewards.undesired_contacts = self.rewards.feet_air_time.__class__(
-            func=undesired_contacts,
-            weight=-0.25,
-            params={
-                "sensor_cfg": SceneEntityCfg(
-                    name="contact_forces",
-                    body_names=".*_calf|.*_thigh|.*_hip"
-                )
-            }
-        )
-
-        # 발이 닿아있으면 보상
-        self.rewards.foot_contacts = self.rewards.feet_air_time.__class__(
-            func=desired_contacts,
-            weight=0.25,
-            params={
-                "sensor_cfg": SceneEntityCfg(
-                    name="contact_forces",
-                    body_names=".*_foot"
-                )
-            }
-        )
-
-        self.rewards.body_height = self.rewards.feet_air_time.__class__(
-            func=body_height_reward,
-            weight=0.5,
-            params={            
-                "target_height": 0.42
-            }
-        )
-
-        self.rewards.no_cross_forward = self.rewards.feet_air_time.__class__(
-            func=suppress_front_leg_crossing_when_forward,
-            weight=-0.2,
-            params={"vel_threshold": 0.2}
-        )
-        
-        self.rewards.feet_slide = self.rewards.feet_air_time.__class__(
-            func=feet_slide,
-            weight=-0.05,
-            params={
-                "sensor_cfg": SceneEntityCfg(
-                    name="contact_forces",
-                    body_names="FL_foot|FR_foot|HL_foot|HR_foot"
-                ),
-                "asset_cfg": SceneEntityCfg(
-                    name="robot",
-                    body_names="FL_foot|FR_foot|HL_foot|HR_foot"
-                )
-            }
-        )
-
+        self.rewards.undesired_contacts = None
         self.rewards.dof_torques_l2.weight = -0.0002
-        self.rewards.track_lin_vel_xy_exp.weight = 2.5
+        self.rewards.track_lin_vel_xy_exp.weight = 1.5
         self.rewards.track_ang_vel_z_exp.weight = 0.75
         self.rewards.dof_acc_l2.weight = -2.5e-7
 
