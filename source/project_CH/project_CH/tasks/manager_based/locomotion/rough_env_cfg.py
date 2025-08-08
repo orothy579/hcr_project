@@ -1,14 +1,14 @@
 from isaaclab.utils import configclass
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg # 기본 보상함수 있음
+from project_CH.tasks.manager_based.locomotion.mdp.rewards import desired_contacts, undesired_contacts
 
 # Master 환경에서 로봇 설정 가져오기
 from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env_cfg import Go2PiperMasterEnvCfg
-from isaaclab.managers import SceneEntityCfg
-
-
+from isaaclab.managers import SceneEntityCfg, RewardTermCfg
 from go2_piper_master.assets.go2_piper_robot import GO2_PIPER_CFG
 from isaaclab.assets import ArticulationCfg
 from isaaclab.managers import ObservationTermCfg
+from isaaclab.envs import mdp
 
 # calf 와 foot 을 분리하기 위해 필요
 CUSTOM_GO2_PIPER_CFG = GO2_PIPER_CFG.replace(
@@ -65,15 +65,45 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Rewards
         self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"
-        self.rewards.feet_air_time.weight = 0.01
-        self.rewards.undesired_contacts = None
+        self.rewards.feet_air_time.weight = 0.05
+        # self.rewards.undesired_contacts = None
         self.rewards.dof_torques_l2.weight = -0.0002
         self.rewards.track_lin_vel_xy_exp.weight = 1.5
         self.rewards.track_ang_vel_z_exp.weight = 0.75
         self.rewards.dof_acc_l2.weight = -2.5e-7
 
+        # 무릎,허벅지 닿으면 페널티
+        self.rewards.undesired_contacts = self.rewards.feet_air_time.__class__(
+            func=undesired_contacts,
+            weight=-0.15,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    name="contact_forces",
+                    body_names=".*_calf|.*_thigh"
+                )
+            }
+        )
+
+        # 잘 서있게 하고 싶어서... 옆으로 넘어지지마..
+        self.rewards.foot_contacts = self.rewards.feet_air_time.__class__(
+            func=desired_contacts,
+            weight=0.25,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    name="contact_forces",
+                    body_names=".*_foot"
+                )
+            }
+        )
+
+        # death penalty
+        self.rewards.is_terminated = RewardTermCfg(
+            func=mdp.is_terminated,
+            weight=-50.0,
+        )
+
         # Termination 조건 설정
-        self.terminations.base_contact.params["sensor_cfg"].body_names = "base_link"
+        self.terminations.base_contact.params["sensor_cfg"].body_names = "base_link|head_upper|head_lower|FL_hip|FR_hip|HL_hip|HR_hip|piper_base_link|piper_link1|piper_link2|piper_link3|piper_link4|piper_link5|piper_link6|piper_link7|piper_link8| piper_gripper_base"
 
 
 @configclass

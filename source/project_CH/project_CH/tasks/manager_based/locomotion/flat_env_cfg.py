@@ -28,7 +28,7 @@ class Go2PiperFlatEnvCfg(Go2PiperRoughEnvCfg):
         self.scene.height_scanner = None
         self.observations.policy.height_scan = None
 
-        # 무릎 닿으면 페널티
+        # 무릎,허벅지,힙 닿으면 페널티
         self.rewards.undesired_contacts = self.rewards.feet_air_time.__class__(
             func=undesired_contacts,
             weight=-0.25,
