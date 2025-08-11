@@ -181,3 +181,28 @@ def suppress_front_leg_crossing_when_forward(env, vel_threshold: float = 0.3):
     penalty = torch.where(apply_mask, crossing_penalty, torch.zeros_like(crossing_penalty))
 
     return penalty
+
+
+def body_relative_height(env, sensor_cfg, target_clearance: float = 0.42, dbg: bool = False):
+    robot = env.scene["robot"]
+    base_z = robot.data.root_pos_w[:, 2]                       # 루트 z (월드)
+
+    hs = env.scene.sensors[sensor_cfg.name]                    # height_scanner
+    hits_w = hs.data.ray_hits_w                                # [N_env, N_rays, 3]
+    z = hits_w[..., 2]                                         # 충돌 지점 z
+    valid = torch.isfinite(z)                                  # inf(미충돌) 마스크
+
+    # --- 디버그 출력: 처음 한 번만 ---
+    if dbg and not hasattr(env, "_dbg_printed"):
+        print("[DBG] ray_hits_w.shape:", hits_w.shape)
+        print("[DBG] valid z ratio:", valid.float().mean().item())
+        print("[DBG] e0 first 5 z:", z[0, :5].tolist())  # 0번 env 5개 샘플
+        env._dbg_printed = True
+
+    # 유효 레이만으로 지면 z를 보수적으로 추정(상위 분위수/최대값 등)
+    z_masked = torch.where(valid, z, z.new_full(z.shape, -1e6))
+    # 계단 모서리 등을 고려해 90% 분위수 사용(더 보수적으로는 max)
+    terrain_z = torch.quantile(z_masked, q=0.9, dim=1)
+
+    clearance = base_z - terrain_z
+    return torch.exp(- (clearance - target_clearance)**2 * 20.0)

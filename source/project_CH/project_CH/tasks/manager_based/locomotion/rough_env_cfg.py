@@ -1,6 +1,6 @@
 from isaaclab.utils import configclass
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import LocomotionVelocityRoughEnvCfg # 기본 보상함수 있음
-from project_CH.tasks.manager_based.locomotion.mdp.rewards import desired_contacts, undesired_contacts
+from project_CH.tasks.manager_based.locomotion.mdp.rewards import body_relative_height, desired_contacts, undesired_contacts
 
 # Master 환경에서 로봇 설정 가져오기
 from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env_cfg import Go2PiperMasterEnvCfg
@@ -25,9 +25,12 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             prim_path="{ENV_REGEX_NS}/Robot"
         )
 
-        # # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
-        # self.scene.robot.actuators["base_actuators"].stiffness = 100.0
-        # self.scene.robot.actuators["base_actuators"].damping = 10.0
+        # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
+        self.scene.robot.actuators["base_actuators"].stiffness = 80.0
+        self.scene.robot.actuators["base_actuators"].damping = 5.0
+
+        self.commands.base_velocity.ranges.lin_vel_x = (0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
 
         # Height scanner 위치 지정 (base_link 에 부착)
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base_link"
@@ -65,7 +68,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Rewards
         self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"
-        self.rewards.feet_air_time.weight = 0.1
+        self.rewards.feet_air_time.weight = 0.2
         # self.rewards.undesired_contacts = None
         self.rewards.dof_torques_l2.weight = -0.0002
         self.rewards.track_lin_vel_xy_exp.weight = 5.0
@@ -73,9 +76,9 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.dof_acc_l2.weight = -2.5e-7
 
         # 무릎,허벅지 닿으면 페널티
-        self.rewards.undesired_contacts = self.rewards.feet_air_time.__class__(
+        self.rewards.undesired_contacts = RewardTermCfg(
             func=undesired_contacts,
-            weight=-0.05,
+            weight=-0.1,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     name="contact_forces",
@@ -85,7 +88,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
 
         # 잘 서있게 하고 싶어서... 옆으로 넘어지지마..
-        self.rewards.foot_contacts = self.rewards.feet_air_time.__class__(
+        self.rewards.foot_contacts = RewardTermCfg(
             func=desired_contacts,
             weight=0.1,
             params={
@@ -94,6 +97,12 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                     body_names=".*_foot"
                 )
             }
+        )
+
+        self.rewards.body_height = RewardTermCfg(
+            func=body_relative_height,
+            weight=0.4,
+            params={"sensor_cfg": SceneEntityCfg(name="height_scanner"), "target_clearance": 0.42, "dbg": True}
         )
 
         # death penalty
