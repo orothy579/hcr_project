@@ -10,9 +10,10 @@ class Go2PiperFlatEnvCfg(Go2PiperRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
-        self.scene.robot.actuators["base_actuators"].stiffness = 60.0
-        self.scene.robot.actuators["base_actuators"].damping = 5.0
+        # 초기화 시 , 거미처럼 걷는 것을 방지 하기 위한 값 조정
+        # [default] stiffness = 20 , damping = 1.0
+        # self.scene.robot.actuators["base_actuators"].stiffness = 40.0
+        # self.scene.robot.actuators["base_actuators"].damping = 3.0
 
         # 보상 weight 변경 (flat 환경용)
         self.rewards.flat_orientation_l2.weight = -2.5
