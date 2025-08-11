@@ -65,17 +65,17 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Rewards
         self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"
-        self.rewards.feet_air_time.weight = 0.05
+        self.rewards.feet_air_time.weight = 0.1
         # self.rewards.undesired_contacts = None
         self.rewards.dof_torques_l2.weight = -0.0002
-        self.rewards.track_lin_vel_xy_exp.weight = 1.5
+        self.rewards.track_lin_vel_xy_exp.weight = 2.0
         self.rewards.track_ang_vel_z_exp.weight = 0.75
         self.rewards.dof_acc_l2.weight = -2.5e-7
 
         # 무릎,허벅지 닿으면 페널티
         self.rewards.undesired_contacts = self.rewards.feet_air_time.__class__(
             func=undesired_contacts,
-            weight=-0.15,
+            weight=-0.05,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     name="contact_forces",
@@ -87,7 +87,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 잘 서있게 하고 싶어서... 옆으로 넘어지지마..
         self.rewards.foot_contacts = self.rewards.feet_air_time.__class__(
             func=desired_contacts,
-            weight=0.25,
+            weight=0.15,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     name="contact_forces",
