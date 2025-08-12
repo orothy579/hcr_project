@@ -1,9 +1,16 @@
 from isaaclab.utils import configclass
-from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts, desired_contacts, body_height_reward, suppress_leg_cross, feet_slide
+from project_CH.tasks.manager_based.locomotion.mdp.rewards import (
+    undesired_contacts,
+    desired_contacts,
+    body_height_reward,
+    suppress_leg_cross,
+    feet_slide,
+)
 from isaaclab.managers import SceneEntityCfg, RewardTermCfg
 
 # rough_env_cfg를 상속
 from .rough_env_cfg import Go2PiperRoughEnvCfg
+
 
 @configclass
 class Go2PiperFlatEnvCfg(Go2PiperRoughEnvCfg):
@@ -39,10 +46,9 @@ class Go2PiperFlatEnvCfg(Go2PiperRoughEnvCfg):
             weight=-0.25,
             params={
                 "sensor_cfg": SceneEntityCfg(
-                    name="contact_forces",
-                    body_names=".*_calf|.*_thigh|.*_hip"
+                    name="contact_forces", body_names=".*_calf|.*_thigh|.*_hip"
                 )
-            }
+            },
         )
 
         # 발이 닿아있으면 보상
@@ -51,42 +57,31 @@ class Go2PiperFlatEnvCfg(Go2PiperRoughEnvCfg):
             weight=0.25,
             params={
                 "sensor_cfg": SceneEntityCfg(
-                    name="contact_forces",
-                    body_names=".*_foot"
+                    name="contact_forces", body_names=".*_foot"
                 )
-            }
+            },
         )
 
         self.rewards.body_height = RewardTermCfg(
-            func=body_height_reward,
-            weight=0.5,
-            params={            
-                "target_height": 0.42
-            }
+            func=body_height_reward, weight=0.5, params={"target_height": 0.42}
         )
 
         self.rewards.no_cross_forward = RewardTermCfg(
-            func=suppress_leg_cross,
-            weight=-0.2,
-            params={"vel_threshold": 0.2}
+            func=suppress_leg_cross, weight=-0.2, params={"vel_threshold": 0.2}
         )
-        
+
         self.rewards.feet_slide = RewardTermCfg(
             func=feet_slide,
             weight=-0.05,
             params={
                 "sensor_cfg": SceneEntityCfg(
-                    name="contact_forces",
-                    body_names="FL_foot|FR_foot|HL_foot|HR_foot"
+                    name="contact_forces", body_names="FL_foot|FR_foot|HL_foot|HR_foot"
                 ),
                 "asset_cfg": SceneEntityCfg(
-                    name="robot",
-                    body_names="FL_foot|FR_foot|HL_foot|HR_foot"
-                )
-            }
+                    name="robot", body_names="FL_foot|FR_foot|HL_foot|HR_foot"
+                ),
+            },
         )
-
-
 
 
 @configclass

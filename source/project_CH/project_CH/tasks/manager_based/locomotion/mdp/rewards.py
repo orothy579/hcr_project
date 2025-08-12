@@ -25,7 +25,10 @@ import torch
 
 
 def feet_air_time(
-    env: ManagerBasedRLEnv, command_name: str, sensor_cfg: SceneEntityCfg, threshold: float
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    sensor_cfg: SceneEntityCfg,
+    threshold: float,
 ) -> torch.Tensor:
     """Reward long steps taken by the feet using L2-kernel.
 
@@ -38,15 +41,21 @@ def feet_air_time(
     # extract the used quantities (to enable type-hinting)
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     # compute the reward
-    first_contact = contact_sensor.compute_first_contact(env.step_dt)[:, sensor_cfg.body_ids]
+    first_contact = contact_sensor.compute_first_contact(env.step_dt)[
+        :, sensor_cfg.body_ids
+    ]
     last_air_time = contact_sensor.data.last_air_time[:, sensor_cfg.body_ids]
     reward = torch.sum((last_air_time - threshold) * first_contact, dim=1)
     # no reward for zero command
-    reward *= torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > 0.1
+    reward *= (
+        torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > 0.1
+    )
     return reward
 
 
-def feet_air_time_positive_biped(env, command_name: str, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+def feet_air_time_positive_biped(
+    env, command_name: str, threshold: float, sensor_cfg: SceneEntityCfg
+) -> torch.Tensor:
     """Reward long steps taken by the feet for bipeds.
 
     This function rewards the agent for taking steps up to a specified threshold and also keep one foot at
@@ -61,14 +70,20 @@ def feet_air_time_positive_biped(env, command_name: str, threshold: float, senso
     in_contact = contact_time > 0.0
     in_mode_time = torch.where(in_contact, contact_time, air_time)
     single_stance = torch.sum(in_contact.int(), dim=1) == 1
-    reward = torch.min(torch.where(single_stance.unsqueeze(-1), in_mode_time, 0.0), dim=1)[0]
+    reward = torch.min(
+        torch.where(single_stance.unsqueeze(-1), in_mode_time, 0.0), dim=1
+    )[0]
     reward = torch.clamp(reward, max=threshold)
     # no reward for zero command
-    reward *= torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > 0.1
+    reward *= (
+        torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > 0.1
+    )
     return reward
 
 
-def feet_slide(env, sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def feet_slide(
+    env, sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
     """Penalize feet sliding.
 
     This function penalizes the agent for sliding its feet on the ground. The reward is computed as the
@@ -77,7 +92,12 @@ def feet_slide(env, sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg = Scen
     """
     # Penalize feet sliding
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    contacts = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :].norm(dim=-1).max(dim=1)[0] > 1.0
+    contacts = (
+        contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :]
+        .norm(dim=-1)
+        .max(dim=1)[0]
+        > 1.0
+    )
     asset = env.scene[asset_cfg.name]
 
     body_vel = asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :2]
@@ -86,56 +106,83 @@ def feet_slide(env, sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg = Scen
 
 
 def track_lin_vel_xy_yaw_frame_exp(
-    env, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env,
+    std: float,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
     """Reward tracking of linear velocity commands (xy axes) in the gravity aligned robot frame using exponential kernel."""
     # extract the used quantities (to enable type-hinting)
     asset = env.scene[asset_cfg.name]
-    vel_yaw = quat_apply_inverse(yaw_quat(asset.data.root_quat_w), asset.data.root_lin_vel_w[:, :3])
+    vel_yaw = quat_apply_inverse(
+        yaw_quat(asset.data.root_quat_w), asset.data.root_lin_vel_w[:, :3]
+    )
     lin_vel_error = torch.sum(
-        torch.square(env.command_manager.get_command(command_name)[:, :2] - vel_yaw[:, :2]), dim=1
+        torch.square(
+            env.command_manager.get_command(command_name)[:, :2] - vel_yaw[:, :2]
+        ),
+        dim=1,
     )
     return torch.exp(-lin_vel_error / std**2)
 
 
 def track_ang_vel_z_world_exp(
-    env, command_name: str, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env,
+    command_name: str,
+    std: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
     """Reward tracking of angular velocity commands (yaw) in world frame using exponential kernel."""
     # extract the used quantities (to enable type-hinting)
     asset = env.scene[asset_cfg.name]
-    ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_w[:, 2])
+    ang_vel_error = torch.square(
+        env.command_manager.get_command(command_name)[:, 2]
+        - asset.data.root_ang_vel_w[:, 2]
+    )
     return torch.exp(-ang_vel_error / std**2)
 
 
 def stand_still_joint_deviation_l1(
-    env, command_name: str, command_threshold: float = 0.06, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    env,
+    command_name: str,
+    command_threshold: float = 0.06,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
     """Penalize offsets from the default joint positions when the command is very small."""
     command = env.command_manager.get_command(command_name)
     # Penalize motion when command is nearly zero.
-    return mdp.joint_deviation_l1(env, asset_cfg) * (torch.norm(command[:, :2], dim=1) < command_threshold)
+    return mdp.joint_deviation_l1(env, asset_cfg) * (
+        torch.norm(command[:, :2], dim=1) < command_threshold
+    )
 
 
-def undesired_contacts(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+def undesired_contacts(
+    env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg
+) -> torch.Tensor:
     """Penalize contacts of undesired body parts (knees, thighs)."""
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    
+
     # shape: (num_envs, history_len, num_bodies)
-    contact_forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :].norm(dim=-1)
-    
+    contact_forces = contact_sensor.data.net_forces_w_history[
+        :, :, sensor_cfg.body_ids, :
+    ].norm(dim=-1)
+
     # history와 body 차원을 모두 합산하여 (num_envs,) shape으로 만듦
     penalty = torch.sum(contact_forces, dim=(1, 2))
     return penalty
 
 
-def desired_contacts(env, sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+def desired_contacts(
+    env, sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
     """
     Give reward when specific body parts are in contact with the ground.
     """
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     # 접촉 힘 계산
-    contact_forces = contact_sensor.data.net_forces_w_history[:, :, sensor_cfg.body_ids, :]
+    contact_forces = contact_sensor.data.net_forces_w_history[
+        :, :, sensor_cfg.body_ids, :
+    ]
     contact_norm = contact_forces.norm(dim=-1).max(dim=1)[0]
     # 1N 이상 접촉 시 보상
     contacts = (contact_norm > 1.0).float()
@@ -154,7 +201,7 @@ def body_height_reward(env, target_height: float):
     # 월드 좌표계 기준 루트 z 위치 ==> sim2real 시 z 위치 알 수 있는 센서 필요
     z_pos = robot.data.root_pos_w[:, 2]
 
-    return torch.exp(- (z_pos - target_height)**2 * 20.0)
+    return torch.exp(-((z_pos - target_height) ** 2) * 20.0)
 
 
 def suppress_leg_cross(env, vel_threshold: float = 0.3):
@@ -184,26 +231,23 @@ def suppress_leg_cross(env, vel_threshold: float = 0.3):
     crossing_penalty = torch.exp(-y_diff * 10.0)
 
     apply_mask = lin_x_cmd > vel_threshold
-    penalty = torch.where(apply_mask, crossing_penalty, torch.zeros_like(crossing_penalty))
+    penalty = torch.where(
+        apply_mask, crossing_penalty, torch.zeros_like(crossing_penalty)
+    )
 
     return penalty
 
 
-def body_relative_height(env, sensor_cfg, target_clearance: float = 0.42, dbg: bool = False):
+def body_relative_height(
+    env, sensor_cfg, target_clearance: float = 0.42, dbg: bool = False
+):
     robot = env.scene["robot"]
-    base_z = robot.data.root_pos_w[:, 2]                       # 루트 z (월드)
+    base_z = robot.data.root_pos_w[:, 2]  # 루트 z (월드)
 
-    hs = env.scene.sensors[sensor_cfg.name]                    # height_scanner
-    hits_w = hs.data.ray_hits_w                                # [N_env, N_rays, 3]
-    z = hits_w[..., 2]                                         # 충돌 지점 z
-    valid = torch.isfinite(z)                                  # inf(미충돌) 마스크
-
-    # --- 디버그 출력: 처음 한 번만 ---
-    if dbg and not hasattr(env, "_dbg_printed"):
-        print("[DBG] ray_hits_w.shape:", hits_w.shape)
-        print("[DBG] valid z ratio:", valid.float().mean().item())
-        print("[DBG] e0 first 5 z:", z[0, :5].tolist())  # 0번 env 5개 샘플
-        env._dbg_printed = True
+    hs = env.scene.sensors[sensor_cfg.name]  # height_scanner
+    hits_w = hs.data.ray_hits_w  # [N_env, N_rays, 3]
+    z = hits_w[..., 2]  # 충돌 지점 z
+    valid = torch.isfinite(z)  # inf(미충돌) 마스크
 
     # 유효 레이만으로 지면 z를 보수적으로 추정(상위 분위수/최대값 등)
     z_masked = torch.where(valid, z, z.new_full(z.shape, -1e6))
@@ -211,4 +255,61 @@ def body_relative_height(env, sensor_cfg, target_clearance: float = 0.42, dbg: b
     terrain_z = torch.quantile(z_masked, q=0.9, dim=1)
 
     clearance = base_z - terrain_z
-    return torch.exp(- (clearance - target_clearance)**2 * 20.0)
+    return torch.exp(-((clearance - target_clearance) ** 2) * 20.0)
+
+
+def _find_global_idx(all_names, target):
+    try:
+        return all_names.index(target)
+    except ValueError:
+        return None
+
+
+def contact_balance(env, sensor_cfg):
+    cs = env.scene.sensors[sensor_cfg.name]
+    # 전체 바디에 대한 접촉 이력 → (N, B)
+    contact_norm = cs.data.net_forces_w_history.norm(dim=-1).max(dim=1)[0]
+    contacts_all = contact_norm > 1.0
+
+    names_all = env.scene["robot"].data.body_names
+    gFL = _find_global_idx(names_all, "FL_foot")
+    gFR = _find_global_idx(names_all, "FR_foot")
+    gHL = _find_global_idx(names_all, "HL_foot")
+    gHR = _find_global_idx(names_all, "HR_foot")
+
+    missing = [
+        s for s, g in [("FL", gFL), ("FR", gFR), ("HL", gHL), ("HR", gHR)] if g is None
+    ]
+    if missing:
+        raise RuntimeError(
+            f"[contact_balance] feet {missing} not found in body names: {names_all}"
+        )
+
+    left = contacts_all[:, [gFL, gHL]].sum(dim=1)
+    right = contacts_all[:, [gFR, gHR]].sum(dim=1)
+    diff = torch.abs(left - right)
+    return torch.exp(-diff)
+
+
+def side_support(env, sensor_cfg):
+    cs = env.scene.sensors[sensor_cfg.name]
+    contact_norm = cs.data.net_forces_w_history.norm(dim=-1).max(dim=1)[0]
+    contacts_all = contact_norm > 1.0
+
+    names_all = env.scene["robot"].data.body_names
+    gFL = _find_global_idx(names_all, "FL_foot")
+    gFR = _find_global_idx(names_all, "FR_foot")
+    gHL = _find_global_idx(names_all, "HL_foot")
+    gHR = _find_global_idx(names_all, "HR_foot")
+
+    missing = [
+        s for s, g in [("FL", gFL), ("FR", gFR), ("HL", gHL), ("HR", gHR)] if g is None
+    ]
+    if missing:
+        raise RuntimeError(
+            f"[side_support] feet {missing} not found in body names: {names_all}"
+        )
+
+    left_has = contacts_all[:, [gFL, gHL]].any(dim=1).float()
+    right_has = contacts_all[:, [gFR, gHR]].any(dim=1).float()
+    return 0.5 + 0.5 * (left_has * right_has)
