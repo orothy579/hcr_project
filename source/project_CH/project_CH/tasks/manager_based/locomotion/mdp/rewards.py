@@ -157,9 +157,12 @@ def body_height_reward(env, target_height: float):
     return torch.exp(- (z_pos - target_height)**2 * 20.0)
 
 
-def suppress_front_leg_crossing_when_forward(env, vel_threshold: float = 0.3):
+def suppress_leg_cross(env, vel_threshold: float = 0.3):
     """
-    x축 명령어가 일정 이상일 때 앞다리가 서로 교차하면 penalty.
+    x축 명령 크기가 임계 이상일 때,
+    - 전진(vx > +thr): 앞다리(FL, FR) 교차 패널티
+    - 후진(vx < -thr): 뒷다리(RL, RR) 교차 패널티 => 필요시 추가 예정
+    (월드 기준 y 간격 사용 — 기존 함수와 동일한 좌표계)
     """
     robot = env.scene["robot"]
     cmd = env.command_manager.get_command("base_velocity")  # (num_envs, 3)
@@ -169,10 +172,13 @@ def suppress_front_leg_crossing_when_forward(env, vel_threshold: float = 0.3):
     body_names = robot.data.body_names  # list of strings
     FL_idx = body_names.index("FL_foot")
     FR_idx = body_names.index("FR_foot")
+    # HL_idx = body_names.index("HL_foot")
+    # HR_idx = body_names.index("HR_foot")
 
     # --- 월드 기준 y 좌표 ---
     pos_y_FL = robot.data.body_pos_w[:, FL_idx, 1]
     pos_y_FR = robot.data.body_pos_w[:, FR_idx, 1]
+    # pos_y_HL = robod.data.body_pos_w[]
 
     y_diff = torch.abs(pos_y_FL - pos_y_FR)
     crossing_penalty = torch.exp(-y_diff * 10.0)

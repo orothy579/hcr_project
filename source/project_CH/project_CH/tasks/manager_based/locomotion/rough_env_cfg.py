@@ -29,6 +29,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.robot.actuators["base_actuators"].stiffness = 80.0
         self.scene.robot.actuators["base_actuators"].damping = 5.0
 
+        # /IsaacLab/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/velocity_env_cfg.py 에 존재
         self.commands.base_velocity.ranges.lin_vel_x = (0, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
 
@@ -68,7 +69,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Rewards
         self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"
-        self.rewards.feet_air_time.weight = 0.2
+        self.rewards.feet_air_time.weight = 0.18
         # self.rewards.undesired_contacts = None
         self.rewards.dof_torques_l2.weight = -0.0002
         self.rewards.track_lin_vel_xy_exp.weight = 5.0
@@ -78,7 +79,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 무릎,허벅지 닿으면 페널티
         self.rewards.undesired_contacts = RewardTermCfg(
             func=undesired_contacts,
-            weight=-0.1,
+            weight=-0.25,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     name="contact_forces",
@@ -90,7 +91,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # 잘 서있게 하고 싶어서... 옆으로 넘어지지마..
         self.rewards.foot_contacts = RewardTermCfg(
             func=desired_contacts,
-            weight=0.1,
+            weight=0.25,
             params={
                 "sensor_cfg": SceneEntityCfg(
                     name="contact_forces",
@@ -101,7 +102,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         self.rewards.body_height = RewardTermCfg(
             func=body_relative_height,
-            weight=0.4,
+            weight=3.0,
             params={"sensor_cfg": SceneEntityCfg(name="height_scanner"), "target_clearance": 0.42, "dbg": True}
         )
 

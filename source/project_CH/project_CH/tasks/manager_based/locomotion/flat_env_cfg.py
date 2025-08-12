@@ -1,6 +1,6 @@
 from isaaclab.utils import configclass
-from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts, desired_contacts, body_height_reward, suppress_front_leg_crossing_when_forward, feet_slide
-from isaaclab.managers import SceneEntityCfg
+from project_CH.tasks.manager_based.locomotion.mdp.rewards import undesired_contacts, desired_contacts, body_height_reward, suppress_leg_cross, feet_slide
+from isaaclab.managers import SceneEntityCfg, RewardTermCfg
 
 # rough_env_cfg를 상속
 from .rough_env_cfg import Go2PiperRoughEnvCfg
@@ -10,10 +10,14 @@ class Go2PiperFlatEnvCfg(Go2PiperRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        # 초기화 시 , 거미처럼 걷는 것을 방지 하기 위한 값 조정
+        # 첫 학습 시 , 거미처럼 걷는 것을 방지 하기 위한 값 조정
         # [default] stiffness = 20 , damping = 1.0
         # self.scene.robot.actuators["base_actuators"].stiffness = 40.0
         # self.scene.robot.actuators["base_actuators"].damping = 3.0
+
+        # /IsaacLab/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/velocity_env_cfg.py 에 존재
+        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)
 
         # 보상 weight 변경 (flat 환경용)
         self.rewards.flat_orientation_l2.weight = -2.5
@@ -30,7 +34,7 @@ class Go2PiperFlatEnvCfg(Go2PiperRoughEnvCfg):
         self.observations.policy.height_scan = None
 
         # 무릎,허벅지,힙 닿으면 페널티
-        self.rewards.undesired_contacts = self.rewards.feet_air_time.__class__(
+        self.rewards.undesired_contacts = RewardTermCfg(
             func=undesired_contacts,
             weight=-0.25,
             params={
@@ -42,7 +46,7 @@ class Go2PiperFlatEnvCfg(Go2PiperRoughEnvCfg):
         )
 
         # 발이 닿아있으면 보상
-        self.rewards.foot_contacts = self.rewards.feet_air_time.__class__(
+        self.rewards.foot_contacts = RewardTermCfg(
             func=desired_contacts,
             weight=0.25,
             params={
@@ -53,7 +57,7 @@ class Go2PiperFlatEnvCfg(Go2PiperRoughEnvCfg):
             }
         )
 
-        self.rewards.body_height = self.rewards.feet_air_time.__class__(
+        self.rewards.body_height = RewardTermCfg(
             func=body_height_reward,
             weight=0.5,
             params={            
@@ -61,13 +65,13 @@ class Go2PiperFlatEnvCfg(Go2PiperRoughEnvCfg):
             }
         )
 
-        self.rewards.no_cross_forward = self.rewards.feet_air_time.__class__(
-            func=suppress_front_leg_crossing_when_forward,
+        self.rewards.no_cross_forward = RewardTermCfg(
+            func=suppress_leg_cross,
             weight=-0.2,
             params={"vel_threshold": 0.2}
         )
         
-        self.rewards.feet_slide = self.rewards.feet_air_time.__class__(
+        self.rewards.feet_slide = RewardTermCfg(
             func=feet_slide,
             weight=-0.05,
             params={
