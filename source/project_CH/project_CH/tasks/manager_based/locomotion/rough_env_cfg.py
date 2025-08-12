@@ -37,11 +37,11 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
 
         # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
-        self.scene.robot.actuators["base_actuators"].stiffness = 40.0
+        self.scene.robot.actuators["base_actuators"].stiffness = 20.0
         self.scene.robot.actuators["base_actuators"].damping = 3.0
 
         # /IsaacLab/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/velocity_env_cfg.py 에 존재
-        self.commands.base_velocity.ranges.lin_vel_x = (0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (0, 2.0)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
 
         # Height scanner 위치 지정 (base_link 에 부착)
