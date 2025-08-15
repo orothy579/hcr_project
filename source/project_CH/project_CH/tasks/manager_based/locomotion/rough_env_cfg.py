@@ -20,12 +20,28 @@ from isaaclab.assets import ArticulationCfg
 from isaaclab.sensors.camera import CameraCfg
 from isaaclab.managers import ObservationTermCfg
 from isaaclab.envs import mdp
+import torch
+import torch.nn.functional as F
 
 
 # calf 와 foot 을 분리하기 위해 필요
 CUSTOM_GO2_PIPER_CFG = GO2_PIPER_CFG.replace(
     spawn=GO2_PIPER_CFG.spawn.replace(merge_fixed_joints=False)
 )
+
+# 이미지 전처리
+def ee_rgb(env, cam_name="ee_cam", size=96):
+    """"EE cam (N,3,size,size) float32 """
+    x = env.scene.sensors[cam_name].data.rgb
+    if x.dtype != torch.float32:
+        x = x.float()
+    if x.max() > 1.5:
+        x = x / 255.0
+    x = x.clamp(0., 1.).permute(0, 3, 1, 2).contiguous()
+    if x.shape[-2:] != (size, size):
+        x = F.interpolate(x, size=(size, size), mode="bilinear", align_corners=False)
+    return x
+        
 
 
 @configclass
