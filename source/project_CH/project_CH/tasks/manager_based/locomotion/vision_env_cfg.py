@@ -1,4 +1,4 @@
-# Auto Curriculum(비전 없음)
+#Auto Curriculum + Vision (제안 기법)
 
 from isaaclab.utils import configclass
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
@@ -18,6 +18,8 @@ from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env_cfg imp
 )
 from isaaclab.managers import SceneEntityCfg, RewardTermCfg
 from go2_piper_master.assets.go2_piper_robot import GO2_PIPER_CFG
+from isaaclab.assets import ArticulationCfg
+from isaaclab.sensors.camera import CameraCfg
 from isaaclab.managers import ObservationTermCfg
 from isaaclab.envs import mdp
 
@@ -27,12 +29,33 @@ CUSTOM_GO2_PIPER_CFG = GO2_PIPER_CFG.replace(
 )
 
 @configclass
-class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
+class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
         self.scene.robot = CUSTOM_GO2_PIPER_CFG.replace(
             prim_path="{ENV_REGEX_NS}/Robot"
+        )
+        
+        # EE 카메라 센서 부착
+        # 링크 좌표계에서의 위치/자세 미세 조정 필요
+        self.scene.sensors.ee_cam = CameraCfg(
+            name = "ee_cam",
+            height=128, width=128,
+            freq=30, # 시뮬 fps에 맞춰 조정
+            attach_to="robot",
+            parent_link_name="piper_gripper_base",
+            # link 좌표계 기준 offset
+            position=(0.02, 0.0, 0.03),
+            orientation=(0.0, 0.0, 0.0),
+            # 렌즈
+            fov=90.0,
+            clipping_range=(0.05, 10.0),
+            enable_color=True,
+            enable_depth=False,
+            enable_segmentation=False,
+
+        )
 
         # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
         self.scene.robot.actuators["base_actuators"].stiffness = 20.0
