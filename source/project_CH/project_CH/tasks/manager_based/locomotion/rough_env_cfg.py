@@ -32,7 +32,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         super().__post_init__()
 
         self.scene.robot = CUSTOM_GO2_PIPER_CFG.replace(
-            prim_path="{ENV_REGEX_NS}/Robot"
+            prim_path="{ENV_REGEX_NS}/Robot")
 
         # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
         self.scene.robot.actuators["base_actuators"].stiffness = 20.0
@@ -151,7 +151,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Termination 조건 설정
         self.terminations.base_contact.params["sensor_cfg"].body_names = (
-            "base_link|head_upper|head_lower|FL_hip|FR_hip|HL_hip|HR_hip|piper_base_link|piper_link1|piper_link2|piper_link3|piper_link4|piper_link5|piper_link6|piper_link7|piper_link8| piper_gripper_base"
+            "base_link|head_upper|head_lower|FL_hip|FR_hip|HL_hip|HR_hip|piper_base_link|piper_link1|piper_link2|piper_link3|piper_link4|piper_link5|piper_link6|piper_link7|piper_link8|piper_gripper_base"
         )
 
 

@@ -16,12 +16,12 @@ from project_CH.tasks.manager_based.locomotion.mdp.rewards import (
 from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env_cfg import (
     Go2PiperMasterEnvCfg,
 )
-from isaaclab.managers import SceneEntityCfg, RewardTermCfg
+from isaaclab.managers import SceneEntityCfg, RewardTermCfg, ObservationTermCfg, CurriculumTermCfg
 from go2_piper_master.assets.go2_piper_robot import GO2_PIPER_CFG
 from isaaclab.assets import ArticulationCfg
 from isaaclab.sensors.camera import CameraCfg
-from isaaclab.managers import ObservationTermCfg
 from isaaclab.envs import mdp
+from project_CH.manager_based.vision.vision_curriculum import terrain_levels_vision
 
 # calf 와 foot 을 분리하기 위해 필요
 CUSTOM_GO2_PIPER_CFG = GO2_PIPER_CFG.replace(
@@ -165,6 +165,21 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
                 )
             },
         )
+
+        if self.scene.terrain.terrain_generator is not None:
+            self.scene.terrain.terrain_generator.num_rows = 5
+            self.scene.terrain.terrain_generator.num_cols = 5
+            self.scene.terrain.terrain_generator.curriculum = False
+        
+        self.curriculum.terms["terrain_levels_vision"] = CurriculumTermCfg(
+            func=terrain_levels_vision,
+            params={
+                "asset_cfg": SceneEntityCfg(name="robot"),
+                "conf_thresh":0.6,
+                "allow_down_bias":1,
+            }
+        )
+        
 
         # death penalty
         self.rewards.is_terminated = RewardTermCfg(
