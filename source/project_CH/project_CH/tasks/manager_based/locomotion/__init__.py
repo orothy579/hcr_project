@@ -26,6 +26,16 @@ gym.register(
 )
 
 gym.register(
+    id="Template-Go2Piper-Base-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.base_env_cfg:Go2PiperBaseEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2PiperRoughPPORunnerCfg",
+    },
+)
+
+gym.register(
     id="Template-Go2Piper-Rough-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,

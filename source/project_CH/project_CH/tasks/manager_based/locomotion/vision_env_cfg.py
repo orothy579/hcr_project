@@ -165,6 +165,13 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
                 )
             },
         )
+        
+        # terrain curriculum setting
+        self.scene.terrain.max_init_terrain_level = 0
+
+        for k in list(self.curriculum.terms.keys()):
+            if ("terrain" in k) or ("level" in k):
+                self.curriculum.terms[k] = None
 
         if self.scene.terrain.terrain_generator is not None:
             self.scene.terrain.terrain_generator.num_rows = 5
@@ -189,7 +196,7 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Termination 조건 설정
         self.terminations.base_contact.params["sensor_cfg"].body_names = (
-            "base_link|head_upper|head_lower|FL_hip|FR_hip|HL_hip|HR_hip|piper_base_link|piper_link1|piper_link2|piper_link3|piper_link4|piper_link5|piper_link6|piper_link7|piper_link8| piper_gripper_base"
+            "base_link|head_upper|head_lower|FL_hip|FR_hip|HL_hip|HR_hip|piper_base_link|piper_link1|piper_link2|piper_link3|piper_link4|piper_link5|piper_link6|piper_link7|piper_link8|piper_gripper_base"
         )
 
 
