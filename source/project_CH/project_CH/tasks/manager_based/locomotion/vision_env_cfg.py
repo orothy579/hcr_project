@@ -26,7 +26,10 @@ from go2_piper_master.assets.go2_piper_robot import GO2_PIPER_CFG
 from isaaclab.assets import ArticulationCfg
 from isaaclab.sensors.camera import CameraCfg
 from isaaclab.envs import mdp
-from project_CH.manager_based.vision.vision_curriculum import terrain_levels_vision
+from project_CH.vision.vision_curriculum import terrain_levels_vision
+
+import isaaclab.sim as sim_utils
+
 
 # calf 와 foot 을 분리하기 위해 필요
 CUSTOM_GO2_PIPER_CFG = GO2_PIPER_CFG.replace(
@@ -43,24 +46,27 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
             prim_path="{ENV_REGEX_NS}/Robot"
         )
 
-        # EE 카메라 센서 부착
+        # EE 카메라 부착
         # 링크 좌표계에서의 위치/자세 미세 조정 필요
+
+        # 링크 이름은 실제 로봇 USD의 링크명으로! (예: "base" 또는 "piper_gripper_base")
         self.scene.sensors.ee_cam = CameraCfg(
-            name="ee_cam",
+            prim_path="{ENV_REGEX_NS}/Robot/piper_gripper_base/ee_cam",  # 링크 하위 경로
+            update_period=0.0,  # 0.0 = 매 스텝 업데이트 (튜토리얼과 동일 의미)
             height=128,
             width=128,
-            freq=30,  # 시뮬 fps에 맞춰 조정
-            attach_to="robot",
-            parent_link_name="piper_gripper_base",
-            # link 좌표계 기준 offset
-            position=(0.02, 0.0, 0.03),
-            orientation=(0.0, 0.0, 0.0),
-            # 렌즈
-            fov=90.0,
-            clipping_range=(0.05, 10.0),
-            enable_color=True,
-            enable_depth=False,
-            enable_segmentation=False,
+            data_types=["rgb"],  # RGB만 캡처
+            spawn=sim_utils.PinholeCameraCfg(
+                focal_length=24.0,
+                focus_distance=1.0,
+                horizontal_aperture=20.955,
+                clipping_range=(0.05, 10.0),
+            ),
+            offset=CameraCfg.OffsetCfg(
+                pos=(0.02, 0.0, 0.03),  # 링크 로컬 좌표계 오프셋
+                rot=(1.0, 0.0, 0.0, 0.0),  # (w,x,y,z), ROS convention
+                convention="ros",
+            ),
         )
 
         # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
@@ -203,23 +209,3 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.terminations.base_contact.params["sensor_cfg"].body_names = (
             "base_link|head_upper|head_lower|FL_hip|FR_hip|HL_hip|HR_hip|piper_base_link|piper_link1|piper_link2|piper_link3|piper_link4|piper_link5|piper_link6|piper_link7|piper_link8|piper_gripper_base"
         )
-
-
-@configclass
-class Go2PiperRoughEnvCfg_PLAY(Go2PiperRoughEnvCfg):
-    def __post_init__(self):
-        super().__post_init__()
-
-        # Play 모드 전용 설정
-        self.scene.num_envs = 50
-        self.scene.env_spacing = 2.5
-        self.scene.terrain.max_init_terrain_level = None
-
-        if self.scene.terrain.terrain_generator is not None:
-            self.scene.terrain.terrain_generator.num_rows = 5
-            self.scene.terrain.terrain_generator.num_cols = 5
-            self.scene.terrain.terrain_generator.curriculum = False
-
-        self.observations.policy.enable_corruption = False
-        self.events.base_external_force_torque = None
-        self.events.push_robot = None

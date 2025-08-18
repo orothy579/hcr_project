@@ -19,11 +19,3 @@ class Go2PiperBaseEnvCfg(Go2PiperRoughEnvCfg):
         self.scene.terrain.terrain_type = "plane"
         self.scene.terrain.terrain_generator = None
         self.curriculum.terrain_levels = None
-
-        # self.rewards.body_height = RewardTermCfg(
-        #     func=body_height_reward, weight=0.5, params={"target_height": 0.42}
-        # )
-
-        # self.rewards.no_cross_forward = RewardTermCfg(
-        #     func=suppress_leg_cross, weight=-0.2, params={"vel_threshold": 0.2}
-        # )

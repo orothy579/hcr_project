@@ -2,6 +2,7 @@ import math
 import torch
 import torch.nn.functional as F
 from types import SimpleNamespace
+from torch import nn
 
 from isaaclab.envs.manager_based_rl_env import ManagerBasedRLEnv
 from isaaclab.sensors import ContactSensor
@@ -179,15 +180,33 @@ class Go2PiperVisionEnv(ManagerBasedRLEnv):
         self._global_step = 0
 
         # Vision CNN (추론 전용)
-        self.vision = TerrainCNN(num_levels=6).to(self.device)
+        self.vision = TerrainCNN().to(self.device)
         self.vision.eval()
 
+        # 온라인 학습 설정
+        self._cnn_loss = nn.SmoothL1Loss()  # Huber 계열
+        self._cnn_opt = torch.optim.AdamW(
+            self.vision.parameters(), lr=5e-4, weight_decay=1e-4
+        )
+        self._cnn_train_every_reset = True  # 리셋 때 1 step 학습
         # Vision 캐시
         self._vision_pred = None
         self._vision_conf = None
 
         # 에피소드 메트릭 수집기
         self.eval_meter = EpisodeMeter(self.num_envs, self.device)
+
+    def _train_cnn_once(self, x, y):
+        """한 번의 미니배치 회귀 업데이트 (x: (N,3,H,W), y: (N,))"""
+        self.vision.train()
+        pred = self.vision(x)
+        loss = self._cnn_loss(pred, y)
+        self._cnn_opt.zero_grad(set_to_none=True)
+        loss.backward()
+        self._cnn_opt.step()
+        self.vision.eval()
+        # 로깅
+        self.extras["vision/online_reg_loss"] = float(loss.detach().mean().item())
 
     # -------- Vision 유틸 --------
     def _vision_smoke(self):
@@ -198,11 +217,12 @@ class Go2PiperVisionEnv(ManagerBasedRLEnv):
     @torch.no_grad()
     def _vision_predict(self):
         x = preprocess_rgb(self, "ee_cam", 96)
-        pred, conf = self.vision.predict(x)
-        self._vision_pred = pred
+        # 회귀: predict() → (y, conf)
+        y_pred, conf = self.vision.predict(x)  # y_pred: (N,) float
+        self._vision_pred = y_pred
         self._vision_conf = conf
-        self.extras["vision/pred_mean"] = pred.float().mean().item()
-        self.extras["vision/conf_mean"] = conf.mean().item()
+        self.extras["vision/pred_mean"] = float(y_pred.float().mean().item())
+        self.extras["vision/conf_mean"] = float(conf.mean().item())
 
     # -------- Stability (겹침 제거 버전) --------
     def _compute_stability_score(self):
@@ -329,6 +349,10 @@ class Go2PiperVisionEnv(ManagerBasedRLEnv):
             # 다음 에피소드용 버퍼 리셋
             self.eval_meter.reset_buffers(env_ids)
 
+            x = preprocess_rgb(self, "ee_cam", 96)  # (N,3,96,96)
+            y = self.scene.terrain.terrain_levels.clone().to(self.device).float()
+            if self._cnn_train_every_reset:
+                self._train_cnn_once(x, y)
             # Vision inference 캐시 갱신
             self._vision_smoke()
             self._vision_predict()
