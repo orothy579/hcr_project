@@ -1,4 +1,4 @@
-#Auto Curriculum + Vision (제안 기법)
+# Auto Curriculum + Vision (제안 기법)
 
 from isaaclab.utils import configclass
 from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
@@ -16,7 +16,12 @@ from project_CH.tasks.manager_based.locomotion.mdp.rewards import (
 from go2_piper_master.tasks.direct.go2_piper_master.go2_piper_master_env_cfg import (
     Go2PiperMasterEnvCfg,
 )
-from isaaclab.managers import SceneEntityCfg, RewardTermCfg, ObservationTermCfg, CurriculumTermCfg
+from isaaclab.managers import (
+    SceneEntityCfg,
+    RewardTermCfg,
+    ObservationTermCfg,
+    CurriculumTermCfg,
+)
 from go2_piper_master.assets.go2_piper_robot import GO2_PIPER_CFG
 from isaaclab.assets import ArticulationCfg
 from isaaclab.sensors.camera import CameraCfg
@@ -28,6 +33,7 @@ CUSTOM_GO2_PIPER_CFG = GO2_PIPER_CFG.replace(
     spawn=GO2_PIPER_CFG.spawn.replace(merge_fixed_joints=False)
 )
 
+
 @configclass
 class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
     def __post_init__(self):
@@ -36,13 +42,14 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.robot = CUSTOM_GO2_PIPER_CFG.replace(
             prim_path="{ENV_REGEX_NS}/Robot"
         )
-        
+
         # EE 카메라 센서 부착
         # 링크 좌표계에서의 위치/자세 미세 조정 필요
         self.scene.sensors.ee_cam = CameraCfg(
-            name = "ee_cam",
-            height=128, width=128,
-            freq=30, # 시뮬 fps에 맞춰 조정
+            name="ee_cam",
+            height=128,
+            width=128,
+            freq=30,  # 시뮬 fps에 맞춰 조정
             attach_to="robot",
             parent_link_name="piper_gripper_base",
             # link 좌표계 기준 offset
@@ -54,7 +61,6 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
             enable_color=True,
             enable_depth=False,
             enable_segmentation=False,
-
         )
 
         # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
@@ -165,7 +171,7 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
                 )
             },
         )
-        
+
         # terrain curriculum setting
         self.scene.terrain.max_init_terrain_level = 0
 
@@ -177,16 +183,15 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
             self.scene.terrain.terrain_generator.num_rows = 5
             self.scene.terrain.terrain_generator.num_cols = 5
             self.scene.terrain.terrain_generator.curriculum = False
-        
+
         self.curriculum.terms["terrain_levels_vision"] = CurriculumTermCfg(
             func=terrain_levels_vision,
             params={
                 "asset_cfg": SceneEntityCfg(name="robot"),
-                "conf_thresh":0.6,
-                "allow_down_bias":1,
-            }
+                "conf_thresh": 0.6,
+                "allow_down_bias": 1,
+            },
         )
-        
 
         # death penalty
         self.rewards.is_terminated = RewardTermCfg(

@@ -26,13 +26,15 @@ CUSTOM_GO2_PIPER_CFG = GO2_PIPER_CFG.replace(
     spawn=GO2_PIPER_CFG.spawn.replace(merge_fixed_joints=False)
 )
 
+
 @configclass
 class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
         self.scene.robot = CUSTOM_GO2_PIPER_CFG.replace(
-            prim_path="{ENV_REGEX_NS}/Robot")
+            prim_path="{ENV_REGEX_NS}/Robot"
+        )
 
         # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
         self.scene.robot.actuators["base_actuators"].stiffness = 20.0

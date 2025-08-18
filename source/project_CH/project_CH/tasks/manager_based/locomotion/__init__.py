@@ -58,7 +58,7 @@ gym.register(
 gym.register(
     id="Template-Go2Piper-Vision-Rough-v0",
     entry_point="project_CH.tasks.manager_based.locomotion.vision_env:Go2PiperVisionEnv",
-    disable_env_checker = True,
+    disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.vision_env_cfg:Go2PiperVisionEnvCfg",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2PiperRoughPPORunnerCfg",

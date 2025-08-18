@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class TerrainCNN(nn.Module):
     """간단한 Terrain Level 분류 CNN (입력: RGB 이미지)"""
 
@@ -14,9 +15,9 @@ class TerrainCNN(nn.Module):
         self.fc2 = nn.Linear(128, num_levels)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))      # (N,16,H/2,W/2)
-        x = F.relu(self.conv2(x))      # (N,32,H/4,W/4)
-        x = F.relu(self.conv3(x))      # (N,64,H/8,W/8)
+        x = F.relu(self.conv1(x))  # (N,16,H/2,W/2)
+        x = F.relu(self.conv2(x))  # (N,32,H/4,W/4)
+        x = F.relu(self.conv3(x))  # (N,64,H/8,W/8)
         x = torch.flatten(x, 1)
         x = F.relu(self.fc1(x))
         return self.fc2(x)  # logits 출력

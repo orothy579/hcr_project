@@ -7,7 +7,9 @@ from isaaclab.envs.manager_based_rl_env import ManagerBasedRLEnv
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_to_euler_xyz  # (roll, pitch, yaw)
 
-from project_CH.tasks.manager_based.locomotion.vision_env_cfg import Go2PiperVisionEnvCfg
+from project_CH.tasks.manager_based.locomotion.vision_env_cfg import (
+    Go2PiperVisionEnvCfg,
+)
 from project_CH.vision import TerrainCNN
 
 
@@ -36,13 +38,14 @@ class EpisodeMeter:
       - Slip Ratio (접지 중 |v_xy| > τ 인 step 비율)
       - Forward Progress (x_now - x0)
     """
+
     def __init__(self, num_envs, device, cfg=None):
         self.device = device
         self.num_envs = num_envs
         self.cfg = SimpleNamespace(
-            success_v_mae_max=0.25,   # m/s
-            success_prog_min=2.0,     # m
-            slip_speed_thresh=0.2,    # m/s
+            success_v_mae_max=0.25,  # m/s
+            success_prog_min=2.0,  # m
+            slip_speed_thresh=0.2,  # m/s
             **(cfg.__dict__ if cfg is not None else {})
         )
         self.reset_buffers()
@@ -84,10 +87,12 @@ class EpisodeMeter:
 
         # Stability(평균만 참고 로그) — env.metrics에 계산돼 있다고 가정
         if hasattr(env, "metrics") and ("stability_score" in env.metrics):
-            self.sum_stability[env_ids] += env.metrics["stability_score"][env_ids].float()
+            self.sum_stability[env_ids] += env.metrics["stability_score"][
+                env_ids
+            ].float()
 
         # Velocity MAE (xy)
-        cmd = env.command_manager.get_command("base_velocity")   # (N,3): [vx, vy, wz]
+        cmd = env.command_manager.get_command("base_velocity")  # (N,3): [vx, vy, wz]
         v_cmd_xy = cmd[env_ids, :2]
         v_body_xy = robot.data.root_lin_vel_w[env_ids, :2]
         v_mae = (v_cmd_xy - v_body_xy).abs().mean(dim=-1)
@@ -105,15 +110,17 @@ class EpisodeMeter:
         foot_ids = [names.index(n) for n in foot_names if n in names]
 
         if len(foot_ids) > 0 and "contact_forces" in env.scene.sensors:
-            v_xy = robot.data.body_lin_vel_w[env_ids][:, foot_ids, :2].norm(dim=-1)  # (M,4)
+            v_xy = robot.data.body_lin_vel_w[env_ids][:, foot_ids, :2].norm(
+                dim=-1
+            )  # (M,4)
 
             cs: ContactSensor = env.scene.sensors["contact_forces"]
             try:
-                netF = cs.data.net_forces_w[:, foot_ids, :]                 # (N,4,3)
-                contact = (netF[env_ids].norm(dim=-1) > 1.0)                # (M,4)
+                netF = cs.data.net_forces_w[:, foot_ids, :]  # (N,4,3)
+                contact = netF[env_ids].norm(dim=-1) > 1.0  # (M,4)
             except Exception:
-                netF = cs.data.net_forces_w_history[:, -1, foot_ids, :]     # (N,4,3)
-                contact = (netF[env_ids].norm(dim=-1) > 1.0)
+                netF = cs.data.net_forces_w_history[:, -1, foot_ids, :]  # (N,4,3)
+                contact = netF[env_ids].norm(dim=-1) > 1.0
 
             contacting = contact.any(dim=1)  # (M,)
             self.contact_steps[env_ids] += contacting.float()
@@ -133,12 +140,13 @@ class EpisodeMeter:
         slip_ratio = torch.zeros_like(steps)
         mask_has_contact = self.contact_steps[env_ids] > 0
         slip_ratio[mask_has_contact] = (
-            self.slip_cnt[env_ids][mask_has_contact] / self.contact_steps[env_ids][mask_has_contact]
+            self.slip_cnt[env_ids][mask_has_contact]
+            / self.contact_steps[env_ids][mask_has_contact]
         ).clamp(0, 1)
 
         x_now = robot.data.root_pos_w[env_ids, 0]
         x0 = self.x0[env_ids].nan_to_num(x_now)
-        forward_prog = (x_now - x0)
+        forward_prog = x_now - x0
 
         success = (
             (~early_terminated_mask)
@@ -228,11 +236,11 @@ class Go2PiperVisionEnv(ManagerBasedRLEnv):
         if len(foot_ids) > 0 and "contact_forces" in self.scene.sensors:
             cs: ContactSensor = self.scene.sensors["contact_forces"]
             try:
-                netF = cs.data.net_forces_w[:, foot_ids, :]              # (N,4,3)
-                contacts = (netF.norm(dim=-1) > 1.0)                     # (N,4)
+                netF = cs.data.net_forces_w[:, foot_ids, :]  # (N,4,3)
+                contacts = netF.norm(dim=-1) > 1.0  # (N,4)
             except Exception:
                 netF = cs.data.net_forces_w_history[:, -1, foot_ids, :]
-                contacts = (netF.norm(dim=-1) > 1.0)
+                contacts = netF.norm(dim=-1) > 1.0
             contact_cnt = contacts.sum(dim=1).float()
             s_contact = torch.exp(-torch.abs(contact_cnt - 2.5) * 0.7).clamp(0, 1)
         else:
@@ -243,16 +251,16 @@ class Go2PiperVisionEnv(ManagerBasedRLEnv):
         #   - CoM 투영(여기서는 root x,y)과 bbox 거리로 margin 계산
         #   - margin > 0 (안) / < 0 (밖)
         if len(foot_ids) > 0:
-            feet_xy = robot.data.body_pos_w[:, foot_ids, :2]          # (N,4,2)
+            feet_xy = robot.data.body_pos_w[:, foot_ids, :2]  # (N,4,2)
             x_min, _ = feet_xy[:, :, 0].min(dim=1)
             x_max, _ = feet_xy[:, :, 0].max(dim=1)
             y_min, _ = feet_xy[:, :, 1].min(dim=1)
             y_max, _ = feet_xy[:, :, 1].max(dim=1)
-            com_xy = robot.data.root_pos_w[:, :2]                     # (N,2)
+            com_xy = robot.data.root_pos_w[:, :2]  # (N,2)
 
             margin_x = torch.minimum(x_max - com_xy[:, 0], com_xy[:, 0] - x_min)
             margin_y = torch.minimum(y_max - com_xy[:, 1], com_xy[:, 1] - y_min)
-            margin = torch.minimum(margin_x, margin_y)                 # (N,)
+            margin = torch.minimum(margin_x, margin_y)  # (N,)
 
             tau_m = 0.10  # 여유 정규화 스케일
             s_support = torch.sigmoid(margin / tau_m)
@@ -274,8 +282,14 @@ class Go2PiperVisionEnv(ManagerBasedRLEnv):
 
     # -------- 타이밍 로그 --------
     def _log_timing_constants(self):
-        physics_dt = float(self.sim.get_physics_dt()) if hasattr(self.sim, "get_physics_dt") else 1.0 / 120.0
-        decimation = int(getattr(self.cfg.sim, "decimation", getattr(self.cfg, "decimation", 4)))
+        physics_dt = (
+            float(self.sim.get_physics_dt())
+            if hasattr(self.sim, "get_physics_dt")
+            else 1.0 / 120.0
+        )
+        decimation = int(
+            getattr(self.cfg.sim, "decimation", getattr(self.cfg, "decimation", 4))
+        )
         episode_length_s = float(getattr(self.cfg, "episode_length_s", 20.0))
         control_dt = physics_dt * decimation
         steps_per_episode = round(episode_length_s / control_dt)
@@ -305,7 +319,9 @@ class Go2PiperVisionEnv(ManagerBasedRLEnv):
     def _reset_idx(self, env_ids: torch.Tensor):
         if env_ids.numel() > 0:
             # 조기 종료 마스크 (실제 terminated/truncated 마스크로 교체 가능)
-            early_terminated = torch.zeros_like(env_ids, dtype=torch.bool, device=self.device)
+            early_terminated = torch.zeros_like(
+                env_ids, dtype=torch.bool, device=self.device
+            )
 
             # 에피소드 통계 집계 & 로그 (최종 5지표)
             self.eval_meter.finalize_episode(self, env_ids, early_terminated)
