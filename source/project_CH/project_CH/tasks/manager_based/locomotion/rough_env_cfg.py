@@ -41,6 +41,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.scene.robot.actuators["base_actuators"].damping = 3.0
 
         # /IsaacLab/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/velocity_env_cfg.py 에 존재
+        # 걷는 방향 및 목표 속도 지정
         self.commands.base_velocity.ranges.lin_vel_x = (0, 2.0)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
 

@@ -6,7 +6,10 @@ from torch import nn
 
 from isaaclab.envs.manager_based_rl_env import ManagerBasedRLEnv
 from isaaclab.sensors import ContactSensor
-from isaaclab.utils.math import quat_to_euler_xyz  # (roll, pitch, yaw)
+from isaaclab.utils.math import euler_xyz_from_quat  # (roll, pitch, yaw)
+from isaaclab.envs import mdp
+from isaaclab.managers import SceneEntityCfg
+
 
 from project_CH.tasks.manager_based.locomotion.vision_env_cfg import (
     Go2PiperVisionEnvCfg,
@@ -14,19 +17,31 @@ from project_CH.tasks.manager_based.locomotion.vision_env_cfg import (
 from project_CH.vision import TerrainCNN
 
 
-def preprocess_rgb(env, cam_name="ee_cam", size=96):
-    """EE cam 이미지를 (N,3,size,size) float32로 전처리"""
-    x = env.scene.sensors[cam_name].data.rgb
-    if x.device != env.device:
-        x = x.to(env.device, non_blocking=True)
-    if x.dtype != torch.float32:
-        x = x.float()
-    if x.max() > 1.5:
-        x = x / 255.0
-    x = x.clamp(0.0, 1.0).permute(0, 3, 1, 2).contiguous()
-    if x.shape[-2:] != (size, size):
-        x = F.interpolate(x, size=(size, size), mode="bilinear", align_corners=False)
-    return x
+def preprocess_rgb(env, cam_name: str, out_size: int = 96) -> torch.Tensor:
+    """
+    Isaac Lab 권장 API로 카메라 이미지를 가져와 (B,3,H,W) float32 [0,1] 형태로 리턴.
+    - cam_name: SceneCfg에 선언한 센서 속성명 (예: "ee_cam")
+    - out_size: 정사각 리사이즈 크기
+    """
+    # (B,H,W,3), 기본 normalize=True → [0,1] 스케일 + 배치 평균 제거
+    img_bhwc = mdp.observations.image(
+        env,
+        sensor_cfg=SceneEntityCfg(name=cam_name),
+        data_type="rgb",
+        normalize=True,
+    ).to(
+        env.device
+    )  # (B,H,W,3), float32
+    # (B,3,H,W)로 변환
+    img_bchw = img_bhwc.permute(0, 3, 1, 2).contiguous()
+    # 크기 맞추기
+    if out_size is not None and (
+        img_bchw.shape[-2] != out_size or img_bchw.shape[-1] != out_size
+    ):
+        img_bchw = F.interpolate(
+            img_bchw, size=(out_size, out_size), mode="bilinear", align_corners=False
+        )
+    return img_bchw
 
 
 class EpisodeMeter:
@@ -101,7 +116,7 @@ class EpisodeMeter:
 
         # Tilt (roll,pitch) RMS
         q = robot.data.root_quat_w[env_ids, :]
-        rpy = quat_to_euler_xyz(q)  # (M,3)
+        rpy = euler_xyz_from_quat(q)  # (M,3)
         tilt_sq = rpy[:, 0] ** 2 + rpy[:, 1] ** 2
         self.sum_tilt_sq[env_ids] += tilt_sq
 
@@ -146,7 +161,7 @@ class EpisodeMeter:
         ).clamp(0, 1)
 
         x_now = robot.data.root_pos_w[env_ids, 0]
-        x0 = self.x0[env_ids].nan_to_num(x_now)
+        x0 = torch.where(torch.isnan(self.x0[env_ids]), x_now, self.x0[env_ids])
         forward_prog = x_now - x0
 
         success = (
@@ -196,17 +211,62 @@ class Go2PiperVisionEnv(ManagerBasedRLEnv):
         # 에피소드 메트릭 수집기
         self.eval_meter = EpisodeMeter(self.num_envs, self.device)
 
-    def _train_cnn_once(self, x, y):
-        """한 번의 미니배치 회귀 업데이트 (x: (N,3,H,W), y: (N,))"""
-        self.vision.train()
-        pred = self.vision(x)
-        loss = self._cnn_loss(pred, y)
-        self._cnn_opt.zero_grad(set_to_none=True)
-        loss.backward()
-        self._cnn_opt.step()
+
+def _train_cnn_once(self, x, y):
+    """한 번의 미니배치 회귀 업데이트 (x: (N,3,H,W), y: (N,))"""
+    x = x.to(self.device, dtype=torch.float32)
+    y = y.to(self.device, dtype=torch.float32)
+
+    # ---------- (A) 우선 autograd 경로 시도 ----------
+    try:
+        with torch.enable_grad():
+            # 파라미터가 얼어있으면 풀기
+            for p in self.vision.parameters():
+                if not p.requires_grad:
+                    p.requires_grad_(True)
+
+            self.vision.train()
+            pred = self.vision(x)  # ← 반드시 forward(), predict() 금지
+            if pred.requires_grad:
+                loss = self._cnn_loss(pred, y)
+                self._cnn_opt.zero_grad(set_to_none=True)
+                loss.backward()
+                self._cnn_opt.step()
+                self.vision.eval()
+                self.extras["vision/online_reg_loss"] = float(
+                    loss.detach().mean().item()
+                )
+                return  # 정상 학습 완료 → 종료
+    except Exception as e:
+        # autograd 경로에서 문제가 나면 수동 경로로 폴백
+        print("[WARN] autograd train failed, fallback to manual head SGD:", e)
+
+    # ---------- (B) 폴백: fc2(헤드)만 수동 SGD 업데이트 ----------
+    # conv/FC1은 특징 추출기로만 사용 (고정), 마지막 fc2만 수동으로 갱신
+    # z: (N,128) 특징, y_pred: (N,), w: (128,), b: ()
+    with torch.no_grad():
         self.vision.eval()
-        # 로깅
-        self.extras["vision/online_reg_loss"] = float(loss.detach().mean().item())
+        z = F.relu(self.vision.conv1(x))
+        z = F.relu(self.vision.conv2(z))
+        z = F.relu(self.vision.conv3(z))
+        z = torch.flatten(z, 1)
+        z = F.relu(self.vision.fc1(z))  # (N,128)
+
+        w = self.vision.fc2.weight.squeeze(0)  # (128,)
+        b = self.vision.fc2.bias.squeeze(0)  # ()
+
+        y_pred = z @ w + b  # (N,)
+        e = y_pred - y  # (N,)
+
+        # 평균 그라디언트 (MSE의 SGD): dL/dw = (e * z).mean(dim=0), dL/db = e.mean()
+        grad_w = (e.unsqueeze(1) * z).mean(dim=0)  # (128,)
+        grad_b = e.mean()  # ()
+
+        eta = 5e-4  # 헤드 전용 학습률 (필요시 살짝 키워도 됨)
+        self.vision.fc2.weight -= eta * grad_w.unsqueeze(0)
+        self.vision.fc2.bias -= eta * grad_b
+
+        self.extras["vision/online_reg_loss"] = float((e.pow(2).mean()).item())
 
     # -------- Vision 유틸 --------
     def _vision_smoke(self):
@@ -349,10 +409,13 @@ class Go2PiperVisionEnv(ManagerBasedRLEnv):
             # 다음 에피소드용 버퍼 리셋
             self.eval_meter.reset_buffers(env_ids)
 
-            x = preprocess_rgb(self, "ee_cam", 96)  # (N,3,96,96)
+            x = preprocess_rgb(self, "ee_cam", 96)
             y = self.scene.terrain.terrain_levels.clone().to(self.device).float()
+
             if self._cnn_train_every_reset:
-                self._train_cnn_once(x, y)
+                with torch.enable_grad():
+                    self._train_cnn_once(x, y)
+
             # Vision inference 캐시 갱신
             self._vision_smoke()
             self._vision_predict()

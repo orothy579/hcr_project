@@ -46,29 +46,6 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
             prim_path="{ENV_REGEX_NS}/Robot"
         )
 
-        # EE 카메라 부착
-        # 링크 좌표계에서의 위치/자세 미세 조정 필요
-
-        # 링크 이름은 실제 로봇 USD의 링크명으로! (예: "base" 또는 "piper_gripper_base")
-        self.scene.sensors.ee_cam = CameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/piper_gripper_base/ee_cam",  # 링크 하위 경로
-            update_period=0.0,  # 0.0 = 매 스텝 업데이트 (튜토리얼과 동일 의미)
-            height=128,
-            width=128,
-            data_types=["rgb"],  # RGB만 캡처
-            spawn=sim_utils.PinholeCameraCfg(
-                focal_length=24.0,
-                focus_distance=1.0,
-                horizontal_aperture=20.955,
-                clipping_range=(0.05, 10.0),
-            ),
-            offset=CameraCfg.OffsetCfg(
-                pos=(0.02, 0.0, 0.03),  # 링크 로컬 좌표계 오프셋
-                rot=(1.0, 0.0, 0.0, 0.0),  # (w,x,y,z), ROS convention
-                convention="ros",
-            ),
-        )
-
         # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
         self.scene.robot.actuators["base_actuators"].stiffness = 20.0
         self.scene.robot.actuators["base_actuators"].damping = 3.0
@@ -77,6 +54,24 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_x = (0, 2.0)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
 
+        self.scene.ee_cam = CameraCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/piper_gripper_base/ee_cam",
+            width=128,
+            height=128,
+            data_types=["rgb"],
+            update_period=0.0,  # 매 스텝 업데이트
+            spawn=sim_utils.PinholeCameraCfg(
+                focal_length=24.0,
+                focus_distance=1.0,
+                horizontal_aperture=20.955,
+                clipping_range=(0.05, 10.0),
+            ),
+            offset=CameraCfg.OffsetCfg(
+                pos=(0.02, 0.0, 0.03),
+                rot=(0.0, 1.0, 0.0, 0.0),  # (w,x,y,z)
+                convention="ros",
+            ),
+        )
         # Height scanner 위치 지정 (base_link 에 부착)
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base_link"
 
@@ -181,21 +176,24 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
         # terrain curriculum setting
         self.scene.terrain.max_init_terrain_level = 0
 
-        for k in list(self.curriculum.terms.keys()):
-            if ("terrain" in k) or ("level" in k):
-                self.curriculum.terms[k] = None
+        # 기본 terrain curriculum 끄기 (있을 수도 있는 기본 항목 제거)
+        if hasattr(self.curriculum, "terrain_levels"):
+            self.curriculum.terrain_levels = None
 
+        # terrain generator 자체의 내부 커리큘럼도 비활성화
         if self.scene.terrain.terrain_generator is not None:
             self.scene.terrain.terrain_generator.num_rows = 5
             self.scene.terrain.terrain_generator.num_cols = 5
             self.scene.terrain.terrain_generator.curriculum = False
 
-        self.curriculum.terms["terrain_levels_vision"] = CurriculumTermCfg(
+        # 비전 기반 커리큘럼을 "속성"으로 등록
+        self.curriculum.terrain_levels_vision = CurriculumTermCfg(
             func=terrain_levels_vision,
             params={
                 "asset_cfg": SceneEntityCfg(name="robot"),
-                "conf_thresh": 0.6,
-                "allow_down_bias": 1,
+                "conf_thresh": 0.0,  # 온라인 회귀면 게이팅 없이 시작 권장
+                "up_margin": 0.0,  # 예측 ≥ 현재+마진 → 승급
+                "down_margin": 1.0,  # 예측 ≤ 현재-마진 → 강등  (예전 allow_down_bias=1.0과 대략 대응)
             },
         )
 
