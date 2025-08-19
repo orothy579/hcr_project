@@ -68,7 +68,7 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
             ),
             offset=CameraCfg.OffsetCfg(
                 pos=(0.02, 0.0, 0.03),
-                rot=(0.0, 1.0, 0.0, 0.0),  # (w,x,y,z)
+                rot=(-0.70442, 0.06163, -0.06163, 0.70442),  # y, w, z, x
                 convention="ros",
             ),
         )
