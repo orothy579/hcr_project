@@ -211,68 +211,79 @@ class Go2PiperVisionEnv(ManagerBasedRLEnv):
         # 에피소드 메트릭 수집기
         self.eval_meter = EpisodeMeter(self.num_envs, self.device)
 
+        with torch.no_grad():
+            x0 = preprocess_rgb(self, "ee_cam", 96)
+            if x0.numel() > 0:
+                y0, c0 = self.vision.predict(x0)
+                self.extras["Vision/warmup_ran"] = 1.0
+                self._vision_pred = y0
+                self._vision_conf = c0
+                self.extras["Vision/pred_mean"] = float(y0.float().mean().item())
+                self.extras["Vision/conf_mean"] = float(c0.mean().item())
 
-def _train_cnn_once(self, x, y):
-    """한 번의 미니배치 회귀 업데이트 (x: (N,3,H,W), y: (N,))"""
-    x = x.to(self.device, dtype=torch.float32)
-    y = y.to(self.device, dtype=torch.float32)
+        self.extras["Vision/sensor_exists"] = float("ee_cam" in self.scene.sensors)
 
-    # ---------- (A) 우선 autograd 경로 시도 ----------
-    try:
-        with torch.enable_grad():
-            # 파라미터가 얼어있으면 풀기
-            for p in self.vision.parameters():
-                if not p.requires_grad:
-                    p.requires_grad_(True)
+    def _train_cnn_once(self, x, y):
+        """한 번의 미니배치 회귀 업데이트 (x: (N,3,H,W), y: (N,))"""
+        x = x.to(self.device, dtype=torch.float32)
+        y = y.to(self.device, dtype=torch.float32)
 
-            self.vision.train()
-            pred = self.vision(x)  # ← 반드시 forward(), predict() 금지
-            if pred.requires_grad:
-                loss = self._cnn_loss(pred, y)
-                self._cnn_opt.zero_grad(set_to_none=True)
-                loss.backward()
-                self._cnn_opt.step()
-                self.vision.eval()
-                self.extras["vision/online_reg_loss"] = float(
-                    loss.detach().mean().item()
-                )
-                return  # 정상 학습 완료 → 종료
-    except Exception as e:
-        # autograd 경로에서 문제가 나면 수동 경로로 폴백
-        print("[WARN] autograd train failed, fallback to manual head SGD:", e)
+        # ---------- (A) 우선 autograd 경로 시도 ----------
+        try:
+            with torch.enable_grad():
+                # 파라미터가 얼어있으면 풀기
+                for p in self.vision.parameters():
+                    if not p.requires_grad:
+                        p.requires_grad_(True)
 
-    # ---------- (B) 폴백: fc2(헤드)만 수동 SGD 업데이트 ----------
-    # conv/FC1은 특징 추출기로만 사용 (고정), 마지막 fc2만 수동으로 갱신
-    # z: (N,128) 특징, y_pred: (N,), w: (128,), b: ()
-    with torch.no_grad():
-        self.vision.eval()
-        z = F.relu(self.vision.conv1(x))
-        z = F.relu(self.vision.conv2(z))
-        z = F.relu(self.vision.conv3(z))
-        z = torch.flatten(z, 1)
-        z = F.relu(self.vision.fc1(z))  # (N,128)
+                self.vision.train()
+                pred = self.vision(x)  # ← 반드시 forward(), predict() 금지
+                if pred.requires_grad:
+                    loss = self._cnn_loss(pred, y)
+                    self._cnn_opt.zero_grad(set_to_none=True)
+                    loss.backward()
+                    self._cnn_opt.step()
+                    self.vision.eval()
+                    self.extras["Vision/online_reg_loss"] = float(
+                        loss.detach().mean().item()
+                    )
+                    return  # 정상 학습 완료 → 종료
+        except Exception as e:
+            # autograd 경로에서 문제가 나면 수동 경로로 폴백
+            print("[WARN] autograd train failed, fallback to manual head SGD:", e)
 
-        w = self.vision.fc2.weight.squeeze(0)  # (128,)
-        b = self.vision.fc2.bias.squeeze(0)  # ()
+        # ---------- (B) 폴백: fc2(헤드)만 수동 SGD 업데이트 ----------
+        # conv/FC1은 특징 추출기로만 사용 (고정), 마지막 fc2만 수동으로 갱신
+        # z: (N,128) 특징, y_pred: (N,), w: (128,), b: ()
+        with torch.no_grad():
+            self.vision.eval()
+            z = F.relu(self.vision.conv1(x))
+            z = F.relu(self.vision.conv2(z))
+            z = F.relu(self.vision.conv3(z))
+            z = torch.flatten(z, 1)
+            z = F.relu(self.vision.fc1(z))  # (N,128)
 
-        y_pred = z @ w + b  # (N,)
-        e = y_pred - y  # (N,)
+            w = self.vision.fc2.weight.squeeze(0)  # (128,)
+            b = self.vision.fc2.bias.squeeze(0)  # ()
 
-        # 평균 그라디언트 (MSE의 SGD): dL/dw = (e * z).mean(dim=0), dL/db = e.mean()
-        grad_w = (e.unsqueeze(1) * z).mean(dim=0)  # (128,)
-        grad_b = e.mean()  # ()
+            y_pred = z @ w + b  # (N,)
+            e = y_pred - y  # (N,)
 
-        eta = 5e-4  # 헤드 전용 학습률 (필요시 살짝 키워도 됨)
-        self.vision.fc2.weight -= eta * grad_w.unsqueeze(0)
-        self.vision.fc2.bias -= eta * grad_b
+            # 평균 그라디언트 (MSE의 SGD): dL/dw = (e * z).mean(dim=0), dL/db = e.mean()
+            grad_w = (e.unsqueeze(1) * z).mean(dim=0)  # (128,)
+            grad_b = e.mean()  # ()
 
-        self.extras["vision/online_reg_loss"] = float((e.pow(2).mean()).item())
+            eta = 5e-4  # 헤드 전용 학습률 (필요시 살짝 키워도 됨)
+            self.vision.fc2.weight -= eta * grad_w.unsqueeze(0)
+            self.vision.fc2.bias -= eta * grad_b
+
+            self.extras["Vision/online_reg_loss"] = float((e.pow(2).mean()).item())
 
     # -------- Vision 유틸 --------
     def _vision_smoke(self):
         x = preprocess_rgb(self, "ee_cam", 96)
-        self.extras["vision/shape_ok"] = float(x.shape[-1] == 96)
-        self.extras["vision/device_cuda"] = float(x.is_cuda)
+        self.extras["Vision/shape_ok"] = float(x.shape[-1] == 96)
+        self.extras["Vision/device_cuda"] = float(x.is_cuda)
 
     @torch.no_grad()
     def _vision_predict(self):
@@ -281,84 +292,8 @@ def _train_cnn_once(self, x, y):
         y_pred, conf = self.vision.predict(x)  # y_pred: (N,) float
         self._vision_pred = y_pred
         self._vision_conf = conf
-        self.extras["vision/pred_mean"] = float(y_pred.float().mean().item())
-        self.extras["vision/conf_mean"] = float(conf.mean().item())
-
-    # -------- Stability (겹침 제거 버전) --------
-    def _compute_stability_score(self):
-        """
-        자세/지지 중심 안정도 [0,1]:
-          - s_height: |z - z*|
-          - s_omega: |ω_x,y|
-          - s_contact: 접지 개수(2~3개 선호)
-          - s_support: support polygon(간단히 bbox 근사) 내부 여유 margin
-          - Slip, V_MAE, Progress는 포함하지 않음 (중복 방지).
-        """
-        device = self.device
-        robot = self.scene["robot"]
-        N = robot.data.root_pos_w.shape[0]
-
-        # 높이 안정성
-        z = robot.data.root_pos_w[:, 2]
-        target_h, tol_h = 0.42, 0.08
-        s_height = torch.exp(-torch.abs(z - target_h) / tol_h).clamp(0, 1)
-
-        # 기울기/진동 proxy: 각속도(x,y)
-        ang_xy = robot.data.root_ang_vel_w[:, :2].norm(dim=-1)
-        s_omega = torch.exp(-ang_xy / 1.0).clamp(0, 1)
-
-        # 발 인덱스
-        names = robot.data.body_names
-        foot_names = ["FL_foot", "FR_foot", "HL_foot", "HR_foot"]
-        foot_ids = [names.index(n) for n in foot_names if n in names]
-
-        # 접지 개수 안정성 (2~3개 선호)
-        if len(foot_ids) > 0 and "contact_forces" in self.scene.sensors:
-            cs: ContactSensor = self.scene.sensors["contact_forces"]
-            try:
-                netF = cs.data.net_forces_w[:, foot_ids, :]  # (N,4,3)
-                contacts = netF.norm(dim=-1) > 1.0  # (N,4)
-            except Exception:
-                netF = cs.data.net_forces_w_history[:, -1, foot_ids, :]
-                contacts = netF.norm(dim=-1) > 1.0
-            contact_cnt = contacts.sum(dim=1).float()
-            s_contact = torch.exp(-torch.abs(contact_cnt - 2.5) * 0.7).clamp(0, 1)
-        else:
-            s_contact = torch.ones(N, device=device)
-
-        # Support polygon margin (bbox 근사)
-        #   - 발의 x,y 최소/최대로 bbox 생성
-        #   - CoM 투영(여기서는 root x,y)과 bbox 거리로 margin 계산
-        #   - margin > 0 (안) / < 0 (밖)
-        if len(foot_ids) > 0:
-            feet_xy = robot.data.body_pos_w[:, foot_ids, :2]  # (N,4,2)
-            x_min, _ = feet_xy[:, :, 0].min(dim=1)
-            x_max, _ = feet_xy[:, :, 0].max(dim=1)
-            y_min, _ = feet_xy[:, :, 1].min(dim=1)
-            y_max, _ = feet_xy[:, :, 1].max(dim=1)
-            com_xy = robot.data.root_pos_w[:, :2]  # (N,2)
-
-            margin_x = torch.minimum(x_max - com_xy[:, 0], com_xy[:, 0] - x_min)
-            margin_y = torch.minimum(y_max - com_xy[:, 1], com_xy[:, 1] - y_min)
-            margin = torch.minimum(margin_x, margin_y)  # (N,)
-
-            tau_m = 0.10  # 여유 정규화 스케일
-            s_support = torch.sigmoid(margin / tau_m)
-        else:
-            s_support = torch.ones(N, device=device)
-
-        # 종합 안정도 (가중 기하평균)
-        score = (
-            (s_height.clamp(0, 1) ** 0.35)
-            * (s_omega.clamp(0, 1) ** 0.35)
-            * (s_contact.clamp(0, 1) ** 0.15)
-            * (s_support.clamp(0, 1) ** 0.15)
-        ).clamp(0, 1)
-
-        if not hasattr(self, "metrics"):
-            self.metrics = {}
-        self.metrics["stability_score"] = score
-        self.extras["stability/mean"] = float(score.mean().item())
+        self.extras["Vision/pred_mean"] = float(y_pred.float().mean().item())
+        self.extras["Vision/conf_mean"] = float(conf.mean().item())
 
     # -------- 타이밍 로그 --------
     def _log_timing_constants(self):

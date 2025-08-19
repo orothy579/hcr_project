@@ -52,7 +52,7 @@ def terrain_levels_vision(
     terrain.update_env_origins(env_ids, move_up, move_down)
 
     # 로깅(선택)
-    env.extras["curr/vision_promote_frac"] = float(move_up.float().mean().item())
-    env.extras["curr/vision_demote_frac"] = float(move_down.float().mean().item())
+    env.extras["Curriculum/vision_promote_frac"] = float(move_up.float().mean().item())
+    env.extras["Curriculum/vision_demote_frac"] = float(move_down.float().mean().item())
 
     return torch.mean(terrain.terrain_levels.float())

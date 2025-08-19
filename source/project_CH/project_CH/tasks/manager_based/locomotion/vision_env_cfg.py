@@ -193,7 +193,7 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "asset_cfg": SceneEntityCfg(name="robot"),
                 "conf_thresh": 0.0,  # 온라인 회귀면 게이팅 없이 시작 권장
                 "up_margin": 0.0,  # 예측 ≥ 현재+마진 → 승급
-                "down_margin": 1.0,  # 예측 ≤ 현재-마진 → 강등  (예전 allow_down_bias=1.0과 대략 대응)
+                "down_margin": 0.0,  # 예측 ≤ 현재-마진 → 강등  (예전 allow_down_bias=1.0과 대략 대응)
             },
         )
 
