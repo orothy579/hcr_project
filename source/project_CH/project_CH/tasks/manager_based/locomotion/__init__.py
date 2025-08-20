@@ -39,7 +39,7 @@ gym.register(
 
 gym.register(
     id="Template-Go2Piper-Vision-v0",
-    entry_point="project_CH.tasks.manager_based.locomotion.vision_env:Go2PiperVisionEnv",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.vision_env_cfg:Go2PiperVisionEnvCfg",

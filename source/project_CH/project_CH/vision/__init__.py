@@ -1,3 +1,3 @@
-from .terrain_cnn import TerrainCNN
+from .cnn import VisionEncoder
 
-__all__ = ["TerrainCNN"]
+__all__ = ["VisionEncoder"]

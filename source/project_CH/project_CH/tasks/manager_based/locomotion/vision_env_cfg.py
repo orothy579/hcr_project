@@ -20,13 +20,12 @@ from isaaclab.managers import (
     SceneEntityCfg,
     RewardTermCfg,
     ObservationTermCfg,
-    CurriculumTermCfg,
+    ObservationGroupCfg,
 )
 from go2_piper_master.assets.go2_piper_robot import GO2_PIPER_CFG
 from isaaclab.assets import ArticulationCfg
 from isaaclab.sensors.camera import CameraCfg
 from isaaclab.envs import mdp
-from project_CH.vision.vision_curriculum import terrain_levels_vision
 
 import isaaclab.sim as sim_utils
 
@@ -39,6 +38,7 @@ CUSTOM_GO2_PIPER_CFG = GO2_PIPER_CFG.replace(
 
 @configclass
 class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
+
     def __post_init__(self):
         super().__post_init__()
 
@@ -54,12 +54,13 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_x = (0, 2.0)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
 
+        # 카메라 세팅
         self.scene.ee_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/piper_gripper_base/ee_cam",
             width=128,
             height=128,
             data_types=["rgb"],
-            update_period=0.0,  # 매 스텝 업데이트
+            update_period=0,  # 60 frame 마다 업데이트
             spawn=sim_utils.PinholeCameraCfg(
                 focal_length=24.0,
                 focus_distance=1.0,
@@ -72,6 +73,21 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
                 convention="ros",
             ),
         )
+
+        # 카메라 oservation 등록
+        # vision_embed를 attribute로 추가
+        setattr(
+            self.observations.policy,
+            "vision_embed",
+            ObservationTermCfg(
+                func="project_CH.vision.observation:rgb_ee_embed",
+                params={"sensor_cfg": SceneEntityCfg(name="ee_cam")},
+                scale=1.0,
+                clip=None,
+            ),
+        )
+
+        print("[DEBUG] self.observations.policy type:", type(self.observations.policy))
         # Height scanner 위치 지정 (base_link 에 부착)
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base_link"
 
@@ -92,6 +108,9 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # piper 관절 제외
         self.actions.joint_pos.joint_names = "FL_.*|FR_.*|HL_.*|HR_.*"
+
+        # 로봇마다 거리 띄우기
+        self.scene.env_spacing = 5
 
         # Push 이벤트 제거
         self.events.push_robot = None
@@ -170,30 +189,6 @@ class Go2PiperVisionEnvCfg(LocomotionVelocityRoughEnvCfg):
                 "sensor_cfg": SceneEntityCfg(
                     name="contact_forces",
                 )
-            },
-        )
-
-        # terrain curriculum setting
-        self.scene.terrain.max_init_terrain_level = 0
-
-        # 기본 terrain curriculum 끄기 (있을 수도 있는 기본 항목 제거)
-        if hasattr(self.curriculum, "terrain_levels"):
-            self.curriculum.terrain_levels = None
-
-        # terrain generator 자체의 내부 커리큘럼도 비활성화
-        if self.scene.terrain.terrain_generator is not None:
-            self.scene.terrain.terrain_generator.num_rows = 5
-            self.scene.terrain.terrain_generator.num_cols = 5
-            self.scene.terrain.terrain_generator.curriculum = False
-
-        # 비전 기반 커리큘럼을 "속성"으로 등록
-        self.curriculum.terrain_levels_vision = CurriculumTermCfg(
-            func=terrain_levels_vision,
-            params={
-                "asset_cfg": SceneEntityCfg(name="robot"),
-                "conf_thresh": 0.0,  # 온라인 회귀면 게이팅 없이 시작 권장
-                "up_margin": 0.0,  # 예측 ≥ 현재+마진 → 승급
-                "down_margin": 0.0,  # 예측 ≤ 현재-마진 → 강등  (예전 allow_down_bias=1.0과 대략 대응)
             },
         )
 
