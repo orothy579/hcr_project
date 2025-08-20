@@ -1,3 +1,4 @@
+# 카메라 이미지를 정책(policy)에 바로 넣을 수 있게 변환
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,7 +11,7 @@ class VisionEncoder(nn.Module):
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=2, padding=1)
         self.conv3 = nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1)
 
-        # ✅ Adaptive Pooling → 항상 (6x6)으로 줄이기
+        # Adaptive Pooling → 항상 (6x6)으로 줄이기
         self.pool = nn.AdaptiveAvgPool2d((6, 6))
 
         # 이제 입력 차원이 항상 64*6*6 = 2304 으로 고정됨
