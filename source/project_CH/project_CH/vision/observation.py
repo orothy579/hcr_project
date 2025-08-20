@@ -39,3 +39,15 @@ def rgb_ee_embed(env, sensor_cfg):
     with torch.no_grad():
         feat = env._vision_encoder(x)  # (N,64)
     return feat
+
+
+def zero_vision_embed(env, sensor_cfg=None, dim: int = 64):
+    """
+    비전이 없는 설정에서 policy 입력 차원을 맞추기 위한 0-벡터 임베딩.
+    """
+    # env.num_envs 를 통해 배치 크기 획득 (Isaac Lab env 공통)
+    import torch
+
+    N = env.num_envs
+    device = getattr(env, "device", "cpu")
+    return torch.zeros((N, 64), device=device, dtype=torch.float32)

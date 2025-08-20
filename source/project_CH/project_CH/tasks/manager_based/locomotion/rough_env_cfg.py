@@ -36,6 +36,14 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             prim_path="{ENV_REGEX_NS}/Robot"
         )
 
+        setattr(
+            self.observations.policy,
+            "zero_vision_embed",
+            ObservationTermCfg(
+                func="project_CH.vision.observation:zero_vision_embed",
+            ),
+        )
+
         # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
         self.scene.robot.actuators["base_actuators"].stiffness = 20.0
         self.scene.robot.actuators["base_actuators"].damping = 3.0
@@ -65,6 +73,9 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # piper 관절 제외
         self.actions.joint_pos.joint_names = "FL_.*|FR_.*|HL_.*|HR_.*"
+
+        # 로봇마다 거리 띄우기
+        self.scene.env_spacing = 5
 
         # Push 이벤트 제거
         self.events.push_robot = None
