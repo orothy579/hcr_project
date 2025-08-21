@@ -50,7 +50,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # /IsaacLab/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/velocity_env_cfg.py 에 존재
         # 걷는 방향 및 목표 속도 지정
-        self.commands.base_velocity.ranges.lin_vel_x = (0, 2.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (0, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
 
         # Height scanner 위치 지정 (base_link 에 부착)
@@ -72,10 +72,10 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.actions.joint_pos.scale = 0.25
 
         # piper 관절 제외
-        self.actions.joint_pos.joint_names = "FL_.*|FR_.*|HL_.*|HR_.*"
+        self.actions.joint_pos.joint_names = "FL_.*|FR_.*|HL_.*|HR_.*|piper_.*"
 
         # 로봇마다 거리 띄우기
-        self.scene.env_spacing = 5
+        # self.scene.env_spacing = 5
 
         # Push 이벤트 제거
         self.events.push_robot = None
