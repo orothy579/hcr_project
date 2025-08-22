@@ -10,6 +10,7 @@ from project_CH.tasks.manager_based.locomotion.mdp.rewards import (
     undesired_contacts,
     contact_balance,
     side_support,
+    feet_slide,
 )
 
 # Master 환경에서 로봇 설정 가져오기
@@ -21,28 +22,30 @@ from go2_piper_master.assets.go2_piper_robot import GO2_PIPER_CFG
 from isaaclab.managers import ObservationTermCfg
 from isaaclab.envs import mdp
 
-# calf 와 foot 을 분리하기 위해 필요
-CUSTOM_GO2_PIPER_CFG = GO2_PIPER_CFG.replace(
-    spawn=GO2_PIPER_CFG.spawn.replace(merge_fixed_joints=False)
-)
-
 
 @configclass
 class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
 
-        self.scene.robot = CUSTOM_GO2_PIPER_CFG.replace(
-            prim_path="{ENV_REGEX_NS}/Robot"
+        self.scene.robot = GO2_PIPER_CFG.replace(
+            # calf 와 foot 을 분리하기 위해 필요
+            spawn=GO2_PIPER_CFG.spawn.replace(
+                merge_fixed_joints=False,
+                self_collision=True,
+                activate_contact_sensors=True,
+            ),
+            prim_path="{ENV_REGEX_NS}/Robot",
         )
 
-        setattr(
-            self.observations.policy,
-            "zero_vision_embed",
-            ObservationTermCfg(
-                func="project_CH.vision.observation:zero_vision_embed",
-            ),
-        )
+        # vision 과 비교를 위해 추가했던 observation
+        # setattr(
+        #     self.observations.policy,
+        #     "zero_vision_embed",
+        #     ObservationTermCfg(
+        #         func="project_CH.vision.observation:zero_vision_embed",
+        #     ),
+        # )
 
         # 초기화 시 안정적인 자세를 위해 기본 root pose와 joint pos 사용
         self.scene.robot.actuators["base_actuators"].stiffness = 20.0
@@ -71,8 +74,8 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Action scale 조정
         self.actions.joint_pos.scale = 0.25
 
-        # piper 관절 제외
-        self.actions.joint_pos.joint_names = "FL_.*|FR_.*|HL_.*|HR_.*|piper_.*"
+        # 학습 시 추가할 관절, 주석 시 모든 관절 동시 학습
+        # self.actions.joint_pos.joint_names = "FL_.*|FR_.*|HL_.*|HR_.*|piper_.*"
 
         # 로봇마다 거리 띄우기
         # self.scene.env_spacing = 5
@@ -98,14 +101,28 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             },
         }
 
-        # Rewards
+        # --------------------- locomotion reward/penalty -----------------------
         self.rewards.feet_air_time.params["sensor_cfg"].body_names = ".*_foot"
         self.rewards.feet_air_time.weight = 0.01
-        # self.rewards.undesired_contacts = None
         self.rewards.dof_torques_l2.weight = -0.0002
         self.rewards.track_lin_vel_xy_exp.weight = 7.0
         self.rewards.track_ang_vel_z_exp.weight = 0.95
         self.rewards.dof_acc_l2.weight = -2.5e-7
+
+        self.rewards.feet_slide = RewardTermCfg(
+            func=feet_slide,
+            weight=-0.02,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    name="contact_forces",
+                    body_names=["FL_foot", "FR_foot", "HL_foot", "HR_foot"],
+                ),
+                "asset_cfg": SceneEntityCfg(
+                    name="robot",
+                    body_names=["FL_foot", "FR_foot", "HL_foot", "HR_foot"],
+                ),
+            },
+        )
 
         # 무릎,허벅지 닿으면 페널티
         self.rewards.undesired_contacts = RewardTermCfg(
@@ -147,6 +164,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
                 )
             },
         )
+
         self.rewards.side_support = RewardTermCfg(
             func=side_support,
             weight=0.1,
@@ -157,7 +175,31 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             },
         )
 
-        # death penalty
+        # --------------------- piper reward/penalty -----------------------
+
+        self.rewards.arm_pos_penalty = RewardTermCfg(
+            func=mdp.joint_pos_limits,
+            weight=-0.05,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    name="robot",
+                    joint_names="piper_.*",  # 파이퍼 관련 관절만
+                )
+            },
+        )
+
+        self.rewards.arm_vel_penalty = RewardTermCfg(
+            func=mdp.joint_vel_l2,
+            weight=-0.01,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    name="robot",
+                    joint_names="piper_.*",
+                )
+            },
+        )
+
+        # --------------------- death reward/penalty -----------------------
         self.rewards.is_terminated = RewardTermCfg(
             func=mdp.is_terminated,
             weight=-30.0,
@@ -165,5 +207,21 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # Termination 조건 설정
         self.terminations.base_contact.params["sensor_cfg"].body_names = (
-            "base_link|head_upper|head_lower|FL_hip|FR_hip|HL_hip|HR_hip|piper_base_link|piper_link1|piper_link2|piper_link3|piper_link4|piper_link5|piper_link6|piper_link7|piper_link8|piper_gripper_base"
+            "base_link",
+            "head_upper",
+            "head_lower",
+            "FL_hip",
+            "FR_hip",
+            "HL_hip",
+            "HR_hip",
+            "piper_base_link",
+            "piper_link1",
+            "piper_link2",
+            "piper_link3",
+            "piper_link4",
+            "piper_link5",
+            "piper_link6",
+            "piper_link7",
+            "piper_link8",
+            "piper_gripper_base",
         )

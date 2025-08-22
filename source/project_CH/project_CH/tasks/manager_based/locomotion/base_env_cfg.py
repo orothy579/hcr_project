@@ -19,9 +19,6 @@ class Go2PiperBaseEnvCfg(Go2PiperRoughEnvCfg):
         #     ),
         # )
 
-        # 잘 걷는 모델에 이어서 piper 관절 추가 해서 학습
-        self.actions.joint_pos.joint_names = "FL_.*|FR_.*|HL_.*|HR_.*|piper_.*"
-
         # Terrain을 평평한 plane으로 변경
         self.scene.terrain.terrain_type = "plane"
         self.scene.terrain.terrain_generator = None
