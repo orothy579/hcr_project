@@ -54,7 +54,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # /IsaacLab/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/velocity_env_cfg.py 에 존재
         # 걷는 방향 및 목표 속도 지정
         self.commands.base_velocity.ranges.lin_vel_x = (0, 1.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0, 0)
 
         # Height scanner 위치 지정 (base_link 에 부착)
         self.scene.height_scanner.prim_path = "{ENV_REGEX_NS}/Robot/base_link"
@@ -199,6 +199,17 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             },
         )
 
+        self.rewards.gripper_torque_penalty = RewardTermCfg(
+            func=mdp.joint_torques_l2,
+            weight=-0.4,
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    name="robot",
+                    joint_names="piper_joint7|piper_joint8",
+                )
+            },
+        )
+
         # --------------------- death reward/penalty -----------------------
         self.rewards.is_terminated = RewardTermCfg(
             func=mdp.is_terminated,
@@ -224,4 +235,5 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             "piper_link7",
             "piper_link8",
             "piper_gripper_base",
+            "arm_mount",
         )
