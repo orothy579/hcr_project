@@ -199,6 +199,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             },
         )
 
+        # gripper 관련 관절만
         self.rewards.gripper_torque_penalty = RewardTermCfg(
             func=mdp.joint_torques_l2,
             weight=-0.4,
