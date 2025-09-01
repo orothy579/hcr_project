@@ -313,3 +313,41 @@ def side_support(env, sensor_cfg):
     left_has = contacts_all[:, [gFL, gHL]].any(dim=1).float()
     right_has = contacts_all[:, [gFR, gHR]].any(dim=1).float()
     return 0.5 + 0.5 * (left_has * right_has)
+
+
+def _get_action_slice(env, slice_name: str) -> torch.Tensor:
+    """cfg.actions.cfg['schema'] 에 정의된 슬라이스 구간의 액션을 반환.
+    반환 shape: (num_envs, dim)
+    """
+    schema = env.cfg.action_schema
+    if schema is None or slice_name not in schema:
+        # 안전장치: 스키마 없으면 0 텐서 반환 (보상 0 효과)
+        return torch.zeros((env.num_envs, 0), device=env.device, dtype=torch.float32)
+    s, d = schema[slice_name]["start"], schema[slice_name]["dim"]
+    # env.action_manager.action: (num_envs, action_dim)
+    return env.action_manager.action[:, s : s + d]
+
+
+@torch.no_grad()
+def rew_action_arm_l2(env, slice_name: str = "arm_delta") -> torch.Tensor:
+    """팔(arm) 액션의 L2 페널티.
+    - 목적: Stage-1(pretrain)에서 팔 액션을 0 근처로 유지시켜 보행에 영향 제거
+    - 반환: (num_envs,)  — RSL-RL 보상 형식에 맞춤
+    """
+    a = _get_action_slice(env, slice_name)
+    if a.numel() == 0:
+        return torch.zeros(env.num_envs, device=env.device)
+    # per-env scalar: sum of squares over slice dims
+    l2 = (a * a).sum(dim=1)
+    # cfg에서 weight가 음수(-0.01 등)로 곱해질 예정이므로 여기서는 양수로 반환
+    return l2
+
+
+@torch.no_grad()
+def rew_action_gripper_l2(env, slice_name: str = "gripper") -> torch.Tensor:
+    """그리퍼 액션의 L2 페널티."""
+    g = _get_action_slice(env, slice_name)
+    if g.numel() == 0:
+        return torch.zeros(env.num_envs, device=env.device)
+    l2 = (g * g).sum(dim=1)
+    return l2

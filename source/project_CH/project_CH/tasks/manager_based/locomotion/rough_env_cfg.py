@@ -97,7 +97,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.actions.joint_pos.scale = 0.25
 
         # 학습 시 추가할 관절, 주석 시 모든 관절 동시 학습
-        self.actions.joint_pos.joint_names = "FL_.*|FR_.*|HL_.*|HR_.*"
+        # self.actions.joint_pos.joint_names = "FL_.*|FR_.*|HL_.*|HR_.*"
 
         # 로봇마다 거리 띄우기
         # self.scene.env_spacing = 5
