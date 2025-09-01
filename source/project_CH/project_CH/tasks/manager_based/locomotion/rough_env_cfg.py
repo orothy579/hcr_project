@@ -21,6 +21,8 @@ from isaaclab.managers import SceneEntityCfg, RewardTermCfg
 from go2_piper_master.assets.go2_piper_robot import GO2_PIPER_CFG
 from isaaclab.managers import ObservationTermCfg
 from isaaclab.envs import mdp
+from isaaclab.sensors.camera import CameraCfg
+import isaaclab.sim as sim_utils
 
 
 @configclass
@@ -38,6 +40,26 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             prim_path="{ENV_REGEX_NS}/Robot",
         )
 
+        # 카메라 센서 등록 (policy 관측치 X)
+        self.scene.ee_cam = CameraCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/piper_gripper_base/ee_cam",
+            width=128,
+            height=128,
+            data_types=["rgb"],
+            update_period=0,
+            spawn=sim_utils.PinholeCameraCfg(
+                focal_length=24.0,
+                focus_distance=1.0,
+                horizontal_aperture=20.955,
+                clipping_range=(0.05, 10.0),
+            ),
+            offset=CameraCfg.OffsetCfg(
+                pos=(0.02, 0.0, 0.03),
+                rot=(-0.70442, 0.06163, -0.06163, 0.70442),  # y, w, z, x
+                convention="ros",
+            ),
+        )
+
         # vision 과 비교를 위해 추가했던 observation
         # setattr(
         #     self.observations.policy,
@@ -53,7 +75,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
 
         # /IsaacLab/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/velocity_env_cfg.py 에 존재
         # 걷는 방향 및 목표 속도 지정
-        self.commands.base_velocity.ranges.lin_vel_x = (0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (0, 2.0)
         self.commands.base_velocity.ranges.lin_vel_y = (0, 0)
 
         # Height scanner 위치 지정 (base_link 에 부착)
@@ -75,7 +97,7 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.actions.joint_pos.scale = 0.25
 
         # 학습 시 추가할 관절, 주석 시 모든 관절 동시 학습
-        # self.actions.joint_pos.joint_names = "FL_.*|FR_.*|HL_.*|HR_.*|piper_.*"
+        self.actions.joint_pos.joint_names = "FL_.*|FR_.*|HL_.*|HR_.*"
 
         # 로봇마다 거리 띄우기
         # self.scene.env_spacing = 5
