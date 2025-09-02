@@ -16,7 +16,6 @@ from project_CH.tasks.manager_based.locomotion.mdp.rewards import (
     rew_action_gripper_l2,
 )
 
-
 import isaacsim.core.utils.prims as prim_utils
 
 from .rough_env_cfg import Go2PiperRoughEnvCfg
@@ -34,6 +33,43 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
         self.scene.terrain.terrain_generator = None
         self.curriculum.terrain_levels = None
         self.scene.env_spacing = 5.0
+
+        # --- WBC 관련 4개 신호 ---
+        setattr(
+            self.observations.policy,
+            "wbc_obj_pose_b",
+            ObsTerm(
+                func="project_CH.tasks.manager_based.locomotion.mdp.observation:obs_zero_pad",
+                params={"dim": 3},
+            ),
+        )
+        setattr(
+            self.observations.policy,
+            "wbc_dest_pose_b",
+            ObsTerm(
+                func="project_CH.tasks.manager_based.locomotion.mdp.observation:obs_zero_pad",
+                params={"dim": 3},
+            ),
+        )
+        setattr(
+            self.observations.policy,
+            "wbc_ee_pose_b",
+            ObsTerm(
+                func="project_CH.tasks.manager_based.locomotion.mdp.observation:obs_zero_pad",
+                params={"dim": 3},
+            ),  # 필요 시 6으로
+        )
+        setattr(
+            self.observations.policy,
+            "wbc_grip_open",
+            ObsTerm(
+                func="project_CH.tasks.manager_based.locomotion.mdp.observation:obs_zero_pad",
+                params={"dim": 1},
+            ),
+        )
+
+        # concat 모드가 꺼져 있으면 켜주기 (term들을 하나의 벡터로 이어붙임)
+        self.observations.policy.concatenate_terms = True
 
         # --- RigidObjectCfg + sim_utils.CuboidCfg ---
         self.scene.object_box = RigidObjectCfg(
@@ -78,7 +114,7 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
         }
         self.stage_mode = "pretrain"
 
-        # 팔/그리퍼 액션 L2 패널티 (커스텀 리워드 함수 이름은 프로젝트에 등록되어 있어야 함)
+        # 팔/그리퍼 액션 L2 패널티
         self.rewards.arm_action_l2 = RewardTermCfg(
             func=rew_action_arm_l2,
             weight=-0.001,

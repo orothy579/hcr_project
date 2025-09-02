@@ -1,3 +1,5 @@
+# wbc를 위한
+
 import torch
 from isaaclab.utils.math import quat_apply, quat_inv
 from isaaclab.managers import SceneEntityCfg
@@ -43,3 +45,9 @@ def get_gripper_opening(env):
     right = jpos[:, env.robot.joints["piper_joint8"].dof_idx]
     opening = left - right
     return opening.unsqueeze(-1)  # (num_envs,1)
+
+
+@torch.no_grad()
+def obs_zero_pad(env, dim: int) -> torch.Tensor:
+    """(num_envs, dim)의 0 텐서 반환. Stage-1에서 policy obs 차원 고정을 위한 더미."""
+    return torch.zeros((env.num_envs, dim), device=env.device, dtype=torch.float32)
