@@ -1,4 +1,3 @@
-from dataclasses import replace
 from isaaclab.utils import configclass
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
@@ -8,18 +7,6 @@ from isaaclab.managers import (
     ObservationGroupCfg as ObsGroup,
     RewardTermCfg,
 )
-from isaaclab_tasks.manager_based.locomotion.velocity.velocity_env_cfg import (
-    LocomotionVelocityRoughEnvCfg,
-)
-from project_CH.tasks.manager_based.locomotion.mdp.rewards import (
-    undesired_contacts,
-    desired_contacts,
-    body_height_reward,
-    suppress_leg_cross,
-    feet_slide,
-)
-
-import isaacsim.core.utils.prims as prim_utils
 
 from .rough_env_cfg import Go2PiperRoughEnvCfg
 
@@ -28,14 +15,6 @@ from .rough_env_cfg import Go2PiperRoughEnvCfg
 class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
     def __post_init__(self):
         super().__post_init__()
-
-        self.scene.ee_cam = None
-
-        # --- terrain/spacing 등 기존 설정 ---
-        self.scene.terrain.terrain_type = "plane"
-        self.scene.terrain.terrain_generator = None
-        self.curriculum.terrain_levels = None
-        self.scene.env_spacing = 5.0
 
         # --- WBC 관련 4개 관측 정보 추가 ---
         setattr(
@@ -82,8 +61,7 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
                 rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False),
                 mass_props=sim_utils.MassPropertiesCfg(mass=0.35),
                 collision_props=sim_utils.CollisionPropertiesCfg(
-                    collision_enabled=False
-                    # rest_offset=0.0, contact_offset=0.005
+                    rest_offset=0.0, contact_offset=0.005
                 ),
                 visual_material=sim_utils.PreviewSurfaceCfg(
                     diffuse_color=(1.0, 0.0, 0.0)
@@ -118,5 +96,13 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
         }
         self.stage_mode = "pretrain"
 
-        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 1.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 1.0)
+        self.scene.ee_cam = None
+
+        # --- terrain/spacing 등 기존 설정 ---
+        self.scene.terrain.terrain_type = "plane"
+        self.scene.terrain.terrain_generator = None
+        self.curriculum.terrain_levels = None
+        self.scene.env_spacing = 5.0
+
+        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)
