@@ -41,24 +41,24 @@ class Go2PiperRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         )
 
         # 카메라 센서 등록 (policy 관측치 X)
-        self.scene.ee_cam = CameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/piper_gripper_base/ee_cam",
-            width=128,
-            height=128,
-            data_types=["rgb"],
-            update_period=0,
-            spawn=sim_utils.PinholeCameraCfg(
-                focal_length=24.0,
-                focus_distance=1.0,
-                horizontal_aperture=20.955,
-                clipping_range=(0.05, 10.0),
-            ),
-            offset=CameraCfg.OffsetCfg(
-                pos=(0.02, 0.0, 0.03),
-                rot=(-0.70442, 0.06163, -0.06163, 0.70442),  # y, w, z, x
-                convention="ros",
-            ),
-        )
+        # self.scene.ee_cam = CameraCfg(
+        #     prim_path="{ENV_REGEX_NS}/Robot/piper_gripper_base/ee_cam",
+        #     width=128,
+        #     height=128,
+        #     data_types=["rgb"],
+        #     update_period=0,
+        #     spawn=sim_utils.PinholeCameraCfg(
+        #         focal_length=24.0,
+        #         focus_distance=1.0,
+        #         horizontal_aperture=20.955,
+        #         clipping_range=(0.05, 10.0),
+        #     ),
+        #     offset=CameraCfg.OffsetCfg(
+        #         pos=(0.02, 0.0, 0.03),
+        #         rot=(-0.70442, 0.06163, -0.06163, 0.70442),  # y, w, z, x
+        #         convention="ros",
+        #     ),
+        # )
 
         # vision 과 비교를 위해 추가했던 observation
         # setattr(
