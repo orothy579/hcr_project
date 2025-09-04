@@ -104,5 +104,5 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
         self.curriculum.terrain_levels = None
         self.scene.env_spacing = 5.0
 
-        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 2.0)
         self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)
