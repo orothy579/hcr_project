@@ -1,50 +1,57 @@
-# wbc를 위한
+# wbc를 위한 observation
 
 import torch
 from isaaclab.utils.math import quat_apply, quat_inv
 from isaaclab.managers import SceneEntityCfg
 
 
+# helpers
+def _asset_root_pose_w(env, asset_name: str):
+    asset = env.scene[asset_name]
+    return asset.data.root_pos_w, asset.data.root_quat_w  # (N,3),(N,4)
+
+
+def _body_pose_w(env, asset_name: str, body_name: str):
+    asset = env.scene[asset_name]
+    idx = asset.data.body_names.index(body_name)
+    return asset.data.body_pos_w[:, idx, :], asset.data.body_quat_w[:, idx, :]
+
+
 @torch.no_grad()
 def get_object_pose_b(env, object: "SceneEntityCfg"):
-    """물체(object)의 위치/자세를 로봇 base 좌표계로 변환."""
-    pos_w, rot_w = env.scene.get_entity_pose(object.name)  # (num_envs,3), (num_envs,4)
-    base_pos_w = env.robot.data.root_pos_w
-    base_rot_w = env.robot.data.root_quat_w
-    # world→base 변환
-    pos_b = quat_apply(quat_inv(base_rot_w), pos_w - base_pos_w)
-    return pos_b  # (num_envs,3)
+    pos_w, _ = _asset_root_pose_w(env, object.name)
+    base_pos_w = env.scene["robot"].data.root_pos_w
+    base_rot_w = env.scene["robot"].data.root_quat_w
+    return quat_apply(quat_inv(base_rot_w), pos_w - base_pos_w)  # (N,3)
 
 
 @torch.no_grad()
 def get_dest_pose_b(env, dest: "SceneEntityCfg"):
-    """목표 구역(dest)의 중심 좌표를 base 좌표계로 변환."""
-    pos_w, _ = env.scene.get_entity_pose(dest.name)
-    base_pos_w = env.robot.data.root_pos_w
-    base_rot_w = env.robot.data.root_quat_w
-    pos_b = quat_apply(quat_inv(base_rot_w), pos_w - base_pos_w)
-    return pos_b  # (num_envs,3)
+    pos_w, _ = _asset_root_pose_w(env, dest.name)
+    base_pos_w = env.scene["robot"].data.root_pos_w
+    base_rot_w = env.scene["robot"].data.root_quat_w
+    return quat_apply(quat_inv(base_rot_w), pos_w - base_pos_w)  # (N,3)
 
 
 @torch.no_grad()
 def get_ee_pose_b(env, ee: "SceneEntityCfg"):
-    """End-effector(piper_gripper_ee)의 위치를 base 좌표계로 변환."""
-    pos_w, _ = env.scene.get_entity_pose(ee.name)
-    base_pos_w = env.robot.data.root_pos_w
-    base_rot_w = env.robot.data.root_quat_w
-    pos_b = quat_apply(quat_inv(base_rot_w), pos_w - base_pos_w)
-    return pos_b
+    body = ee.body_names[0] if getattr(ee, "body_names", None) else "piper_gripper_base"
+    pos_w, _ = _body_pose_w(env, ee.name, body)  # ee.name == "robot"
+    base_pos_w = env.scene["robot"].data.root_pos_w
+    base_rot_w = env.scene["robot"].data.root_quat_w
+    return quat_apply(quat_inv(base_rot_w), pos_w - base_pos_w)  # (N,3)
 
 
 @torch.no_grad()
 def get_gripper_opening(env):
-    """그리퍼 opening 값을 관측치로."""
-    # 보통 조인트 두 개(piper_joint7,8) 사이 거리 or 각도를 쓰면 됨
-    jpos = env.robot.data.joint_pos
-    left = jpos[:, env.robot.joints["piper_joint7"].dof_idx]
-    right = jpos[:, env.robot.joints["piper_joint8"].dof_idx]
-    opening = left - right
-    return opening.unsqueeze(-1)  # (num_envs,1)
+    # 링크 거리 기반 (조인트 맵 의존 제거)
+    robot = env.scene["robot"]
+    names = robot.data.body_names
+    i7 = names.index("piper_link7")
+    i8 = names.index("piper_link8")
+    pos = robot.data.body_pos_w
+    d = torch.norm(pos[:, i7, :] - pos[:, i8, :], dim=-1, keepdim=True)
+    return d  # (N,1)
 
 
 @torch.no_grad()
