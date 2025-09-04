@@ -53,7 +53,7 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
         # concat 모드가 꺼져 있으면 켜주기 (term들을 하나의 벡터로 이어붙임)
         self.observations.policy.concatenate_terms = True
 
-        # --- RigidObjectCfg + sim_utils.CuboidCfg ---
+        # --- 물체 , place zone 생성 ---
         self.scene.object_box = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/Cuboid",
             spawn=sim_utils.CuboidCfg(
@@ -86,6 +86,9 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
             ),
             init_state=RigidObjectCfg.InitialStateCfg(),
         )
+
+        self.scene.object_box.init_state.pos = (0.7, -0.25, 0.2)
+        self.scene.place_zone.init_state.pos = (1.5, 0.45, 0.01)
 
         # --- Stage-1 locomotion pretrain  ---
         # (부모 cfg에 없는 필드여도 configclass에서는 attribute 추가 허용됨)
