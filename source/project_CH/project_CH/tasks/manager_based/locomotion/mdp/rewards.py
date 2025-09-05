@@ -403,7 +403,7 @@ def _phase_masks(
 
 
 def rew_nav_to_object(
-    env, dist_scale: float = 0.8, fwd_gain: float = 0.6, yaw_gain: float = 0.4
+    env, dist_scale: float = 0.8, fwd_gain: float = 0.1, yaw_gain: float = 0.4
 ):
     # poses
     base_pos_w = env.scene["robot"].data.root_pos_w
@@ -430,7 +430,7 @@ def rew_nav_to_object(
 
 
 def rew_nav_to_zone(
-    env, dist_scale: float = 0.8, fwd_gain: float = 0.6, yaw_gain: float = 0.4
+    env, dist_scale: float = 0.8, fwd_gain: float = 0.1, yaw_gain: float = 0.4
 ):
     base_pos_w = env.scene["robot"].data.root_pos_w
     base_quat_w = env.scene["robot"].data.root_quat_w

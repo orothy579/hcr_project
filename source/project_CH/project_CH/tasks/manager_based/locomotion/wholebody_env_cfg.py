@@ -197,7 +197,7 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
 
             self.rewards.nav_to_object = RewardTermCfg(
                 func=rew_nav_to_object,
-                weight=2.0,
+                weight=5,
             )
             self.rewards.nav_to_zone = RewardTermCfg(
                 func=rew_nav_to_zone,
