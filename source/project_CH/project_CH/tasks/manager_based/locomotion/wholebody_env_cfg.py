@@ -27,6 +27,7 @@ from project_CH.tasks.manager_based.locomotion.mdp.rewards import (
     rew_place_soft,
     pen_drop,
     pen_premature_close,
+    pen_base_speed_hinge,
 )
 
 from isaaclab.envs import mdp
@@ -87,9 +88,6 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
         self.curriculum.terrain_levels = None
         self.scene.env_spacing = 5.0
 
-        self.commands.base_velocity.ranges.lin_vel_x = (-1.0, 2.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (-1.0, 1.0)
-
         # --- 물체 , place zone 생성 ---
         self.scene.object_box = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/Cuboid",
@@ -106,6 +104,8 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
             ),
             init_state=RigidObjectCfg.InitialStateCfg(),
         )
+
+        # self.scene.object_box.init_state.pos = (-3.7, -0.25, 0.2)
 
         self.scene.place_zone = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/PlaceZone",
@@ -124,7 +124,6 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
             init_state=RigidObjectCfg.InitialStateCfg(),
         )
 
-        self.scene.object_box.init_state.pos = (-3.7, -0.25, 0.2)
         self.scene.place_zone.init_state.pos = (1.5, 0.45, 0.01)
 
         self.action_schema = {
@@ -152,6 +151,7 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
             self.rewards.track_ang_vel_z_exp.weight = 0.0
             self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.0)
             self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+
             setattr(
                 self.observations.policy,
                 "velocity_commands",
@@ -161,9 +161,15 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
                 ),
             )
 
+            self.rewards.speed_cap = RewardTermCfg(
+                func=pen_base_speed_hinge,
+                weight=-15.0,
+                params={"v_cap": 2.0},
+            )
+
             self.rewards.arm_pos_penalty = RewardTermCfg(
                 func=mdp.joint_pos_limits,
-                weight=-0.005,
+                weight=-0.0005,
                 params={
                     "asset_cfg": SceneEntityCfg(
                         name="robot",
@@ -174,7 +180,7 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
 
             self.rewards.arm_vel_penalty = RewardTermCfg(
                 func=mdp.joint_vel_l2,
-                weight=-0.001,
+                weight=-0.0001,
                 params={
                     "asset_cfg": SceneEntityCfg(
                         name="robot",
@@ -186,7 +192,7 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
             # gripper 관련 관절만
             self.rewards.gripper_torque_penalty = RewardTermCfg(
                 func=mdp.joint_torques_l2,
-                weight=-0.005,
+                weight=-0.0005,
                 params={
                     "asset_cfg": SceneEntityCfg(
                         name="robot",
@@ -197,7 +203,7 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
 
             self.rewards.nav_to_object = RewardTermCfg(
                 func=rew_nav_to_object,
-                weight=5,
+                weight=10.0,
             )
             self.rewards.nav_to_zone = RewardTermCfg(
                 func=rew_nav_to_zone,
@@ -207,11 +213,11 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
             # 0) 접근
             self.rewards.approach = RewardTermCfg(
                 func=rew_approach_ee_object,
-                weight=2.5,
+                weight=12.0,
                 params={
                     "ee_cfg": ee_cfg,
                     "object_cfg": obj_cfg,
-                    "dist_scale": 0.06,
+                    "dist_scale": 0.5,
                     "use_base_frame": True,
                 },
             )
@@ -223,8 +229,8 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
                 params={
                     "ee_cfg": ee_cfg,
                     "object_cfg": obj_cfg,
-                    "close_thresh": 0.02,
-                    "far_dist": 0.15,
+                    "close_thresh": 0.06,
+                    "far_dist": 0.30,
                 },
             )
 

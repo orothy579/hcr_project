@@ -368,7 +368,7 @@ def _inside_zone_xy(obj_pos_w, zone_pos_w, half_xy):
 
 def _phase_masks(
     env,
-    dist_align=0.90,  # NAV→ALIGN 경계
+    dist_align=1.0,  # NAV→ALIGN 경계
     dist_grasp=0.10,  # ALIGN→GRASP 경계
     close_open=0.02,  # '닫힘' 임계 (opening)
     zone_half_xy=(0.25, 0.25),
@@ -402,8 +402,18 @@ def _phase_masks(
     return m_nav, m_align, m_grasp, m_carry, m_place
 
 
+def pen_base_speed_hinge(env, v_cap: float = 0.50) -> torch.Tensor:
+    """
+    기준 속도 v_cap( m/s )를 넘는 XY 선속도 만큼 벌점.
+    반환은 >=0 이고, Reward weight는 음수로 주어 사용.
+    """
+    v_xy = env.scene["robot"].data.root_lin_vel_w[:, :2].norm(dim=-1)
+    excess = (v_xy - v_cap).clamp(min=0.0)
+    return excess**2  # 과속할수록 제곱으로 벌점 증가
+
+
 def rew_nav_to_object(
-    env, dist_scale: float = 0.8, fwd_gain: float = 0.1, yaw_gain: float = 0.4
+    env, dist_scale: float = 0.8, fwd_gain: float = 0.01, yaw_gain: float = 0.4
 ):
     # poses
     base_pos_w = env.scene["robot"].data.root_pos_w
@@ -430,7 +440,7 @@ def rew_nav_to_object(
 
 
 def rew_nav_to_zone(
-    env, dist_scale: float = 0.8, fwd_gain: float = 0.1, yaw_gain: float = 0.4
+    env, dist_scale: float = 0.8, fwd_gain: float = 0.01, yaw_gain: float = 0.4
 ):
     base_pos_w = env.scene["robot"].data.root_pos_w
     base_quat_w = env.scene["robot"].data.root_quat_w
@@ -457,7 +467,7 @@ def rew_approach_ee_object(
     env,
     ee_cfg: SceneEntityCfg,
     object_cfg: SceneEntityCfg,
-    dist_scale: float = 0.06,
+    dist_scale: float = 0.5,
     use_base_frame: bool = True,
 ) -> torch.Tensor:
     obj_pos_w, _ = _asset_root_pose_w(env, object_cfg.name)
@@ -475,8 +485,9 @@ def rew_approach_ee_object(
     else:
         obj_pos, ee_pos = obj_pos_w, ee_pos_w
     dist = torch.norm(obj_pos - ee_pos, dim=-1)
-
-    out = torch.exp(-((dist / dist_scale) ** 2))
+    near = torch.exp(-((dist / 0.06) ** 2))
+    far = torch.exp(-((dist / 0.50) ** 2)) * 0.35
+    out = near + far
     _, m_align, m_grasp, _, _ = _phase_masks(env)
     return out * torch.clamp(m_align + m_grasp, 0.0, 1.0)
 

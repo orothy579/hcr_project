@@ -14,23 +14,62 @@ class Go2PiperWholebodyEnv(ManagerBasedRLEnv):
     def __init__(self, cfg, **kwargs):
         super().__init__(cfg, **kwargs)
         self._global_step = 0  # 전역 스텝 카운터
+        self._obj_x_range = (-10, 10)
+        self._obj_y_range = (-10, 10)
+        self._obj_z = 0.20
 
     def post_reset(self):
         super().post_reset()
         self._global_step = 0  # 에피소드/런 시작 시 초기화
 
+        env_ids = torch.arange(self.num_envs, device=self.device)
+        self._randomize_object_box(env_ids)
+
+    def reset_idx(self, env_ids: torch.Tensor | None = None):
+        super().reset_idx(env_ids)
+        if env_ids is None:
+            env_ids = torch.arange(self.num_envs, device=self.device)
+        if env_ids.numel() == 0:
+            return
+        self._randomize_object_box(env_ids)
+
+    def _randomize_object_box(self, env_ids: torch.Tensor):
+        n = env_ids.numel()
+        x_min, x_max = self._obj_x_range
+        y_min, y_max = self._obj_y_range
+
+        # Uniform 샘플링
+        x = torch.rand(n, device=self.device) * (x_max - x_min) + x_min
+        y = torch.rand(n, device=self.device) * (y_max - y_min) + y_min
+        z = torch.full((n,), self._obj_z, device=self.device)
+
+        # 월드 좌표 = env origin + 로컬 오프셋
+        local_pos = torch.stack([x, y, z], dim=-1)  # (n, 3)
+        world_pos = self.scene.env_origins[env_ids] + local_pos
+
+        # 회전 없음 (단위 쿼터니언)
+        quat = torch.zeros((n, 4), device=self.device)
+        quat[:, 3] = 1.0
+
+        # 포즈/속도 적용
+        self.scene.object_box.set_world_poses(world_pos, quat, env_ids)
+        self.scene.object_box.set_linear_velocities(
+            torch.zeros((n, 3), device=self.device), env_ids
+        )
+        self.scene.object_box.set_angular_velocities(
+            torch.zeros((n, 3), device=self.device), env_ids
+        )
+
     def step(self, actions):
-        # 표준 5튜플
         obs, rew, terminated, truncated, info = super().step(actions)
         self._global_step += 1
 
-        # 1000 스텝마다 게이팅/상태 로그
         if self._global_step % 1000 == 0:
             m_nav, m_align, m_grasp, m_carry, m_place = _phase_masks(self)
 
             obj_pos_w, _ = _asset_root_pose_w(self, "object_box")
             ee_pos_w, _ = _body_pose_w(self, "robot", "piper_gripper_base")
-            dist = torch.norm(obj_pos_w - ee_pos_w, dim=-1)
+            dist_ee = torch.norm(obj_pos_w - ee_pos_w, dim=-1)  # EE–Object 거리
 
             opening = get_gripper_opening_generic(self).squeeze(-1)
 
@@ -44,7 +83,9 @@ class Go2PiperWholebodyEnv(ManagerBasedRLEnv):
                 f"m(nav,align,grasp,carry,place)="
                 f"{m_nav.mean():.2f}, {m_align.mean():.2f}, {m_grasp.mean():.2f}, "
                 f"{m_carry.mean():.2f}, {m_place.mean():.2f} | "
-                f"dist={dist.mean():.3f}, opening={opening.mean():.3f}, inside%={inside.float().mean():.2f}"
+                f"dist_ee_mean={dist_ee.mean():.3f}, "
+                f"dist_ee_min={dist_ee.min():.3f}, "
+                f"opening={opening.mean():.3f}, inside%={inside.float().mean():.2f}"
             )
 
         return obs, rew, terminated, truncated, info
