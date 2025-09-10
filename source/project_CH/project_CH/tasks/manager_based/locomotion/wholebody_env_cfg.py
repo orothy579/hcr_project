@@ -28,6 +28,7 @@ from project_CH.tasks.manager_based.locomotion.mdp.rewards import (
     pen_drop,
     pen_premature_close,
     pen_base_speed_hinge,
+    rew_ee_progress_toward_object,
 )
 
 from isaaclab.envs import mdp
@@ -92,7 +93,7 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
         self.scene.object_box = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/Cuboid",
             spawn=sim_utils.CuboidCfg(
-                size=(0.10, 0.10, 0.10),
+                size=(0.05, 0.05, 0.05),
                 rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False),
                 mass_props=sim_utils.MassPropertiesCfg(mass=0.35),
                 collision_props=sim_utils.CollisionPropertiesCfg(
@@ -105,7 +106,7 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
             init_state=RigidObjectCfg.InitialStateCfg(),
         )
 
-        # self.scene.object_box.init_state.pos = (-3.7, -0.25, 0.2)
+        self.scene.object_box.init_state.pos = (0.0, 2.0, 0.2)
 
         self.scene.place_zone = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/PlaceZone",
@@ -203,7 +204,8 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
 
             self.rewards.nav_to_object = RewardTermCfg(
                 func=rew_nav_to_object,
-                weight=10.0,
+                weight=1.0,
+                params={},
             )
             self.rewards.nav_to_zone = RewardTermCfg(
                 func=rew_nav_to_zone,
@@ -220,6 +222,10 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
                     "dist_scale": 0.5,
                     "use_base_frame": True,
                 },
+            )
+
+            self.rewards.ee_progress = RewardTermCfg(
+                func=rew_ee_progress_toward_object, weight=10.0
             )
 
             # 1) 조기닫힘 페널티

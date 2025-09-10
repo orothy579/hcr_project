@@ -14,8 +14,8 @@ class Go2PiperWholebodyEnv(ManagerBasedRLEnv):
     def __init__(self, cfg, **kwargs):
         super().__init__(cfg, **kwargs)
         self._global_step = 0  # 전역 스텝 카운터
-        self._obj_x_range = (-10, 10)
-        self._obj_y_range = (-10, 10)
+        self._obj_x_range = (-5, 5)
+        self._obj_y_range = (-5, 5)
         self._obj_z = 0.20
 
     def post_reset(self):
@@ -35,29 +35,38 @@ class Go2PiperWholebodyEnv(ManagerBasedRLEnv):
 
     def _randomize_object_box(self, env_ids: torch.Tensor):
         n = env_ids.numel()
+        if n == 0:
+            return
         x_min, x_max = self._obj_x_range
         y_min, y_max = self._obj_y_range
 
-        # Uniform 샘플링
+        # 1) 샘플
         x = torch.rand(n, device=self.device) * (x_max - x_min) + x_min
         y = torch.rand(n, device=self.device) * (y_max - y_min) + y_min
         z = torch.full((n,), self._obj_z, device=self.device)
 
-        # 월드 좌표 = env origin + 로컬 오프셋
-        local_pos = torch.stack([x, y, z], dim=-1)  # (n, 3)
-        world_pos = self.scene.env_origins[env_ids] + local_pos
+        local_pos = torch.stack([x, y, z], dim=-1).contiguous()  # (n,3)
+        world_pos = (self.scene.env_origins[env_ids] + local_pos).contiguous()
 
-        # 회전 없음 (단위 쿼터니언)
         quat = torch.zeros((n, 4), device=self.device)
         quat[:, 3] = 1.0
 
-        # 포즈/속도 적용
+        # 2) 적용
         self.scene.object_box.set_world_poses(world_pos, quat, env_ids)
         self.scene.object_box.set_linear_velocities(
             torch.zeros((n, 3), device=self.device), env_ids
         )
         self.scene.object_box.set_angular_velocities(
             torch.zeros((n, 3), device=self.device), env_ids
+        )
+
+        # 3) 적용 확인(즉시 읽기)
+        pos_after, quat_after = self.scene.object_box.get_world_poses()
+        print(
+            "[rand] first3 ids:",
+            env_ids[:3].tolist(),
+            " → pos:",
+            pos_after[env_ids[:3]],
         )
 
     def step(self, actions):

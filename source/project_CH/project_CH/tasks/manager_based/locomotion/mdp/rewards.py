@@ -368,7 +368,7 @@ def _inside_zone_xy(obj_pos_w, zone_pos_w, half_xy):
 
 def _phase_masks(
     env,
-    dist_align=1.0,  # NAV→ALIGN 경계
+    dist_align=2.0,  # NAV→ALIGN 경계
     dist_grasp=0.10,  # ALIGN→GRASP 경계
     close_open=0.02,  # '닫힘' 임계 (opening)
     zone_half_xy=(0.25, 0.25),
@@ -412,30 +412,93 @@ def pen_base_speed_hinge(env, v_cap: float = 0.50) -> torch.Tensor:
     return excess**2  # 과속할수록 제곱으로 벌점 증가
 
 
+import torch
+
+
 def rew_nav_to_object(
-    env, dist_scale: float = 0.8, fwd_gain: float = 0.01, yaw_gain: float = 0.4
+    env,
+    dist_scale: float = 0.8,
+    fwd_gain: float = 0.01,
+    yaw_gain: float = 0.4,
+    # --- 추가 옵션 ---
+    v_des: float = 1.0,  # 목표 속도 (m/s). None이면 미사용
+    v_bw: float = 0.30,  # 목표 속도 허용 대역 (m/s)
+    d_des: float = 0.75,  # 원하는 이격 (m). None이면 미사용
+    d_bw: float = 0.1,  # 이격 허용 대역 (m)  ← 0.0 금지
+    under_half_len: float = 0.25,
+    under_half_wid: float = 0.18,
+    under_margin: float = 0.05,
+    under_pen_gain: float = 1.0,
 ):
-    # poses
+    eps = 1e-6
+    v_bw = max(v_bw, 1e-3)  # 분모 보호
+    d_bw = max(d_bw, 1e-3)  # 분모 보호
+
+    # --- 포즈/타깃 벡터 (월드 좌표계) ---
     base_pos_w = env.scene["robot"].data.root_pos_w
     base_quat_w = env.scene["robot"].data.root_quat_w
     obj_pos_w, _ = _asset_root_pose_w(env, "object_box")
-    # 방향/거리
+
     d_w = obj_pos_w - base_pos_w  # (N,3)
     d_xy = d_w[:, :2]
-    dist = torch.norm(d_xy, dim=-1) + 1e-6
-    dir_xy = d_xy / dist.unsqueeze(-1)  # 단위벡터
-    # 진행 속도: base 선속도를 yaw frame으로 정렬
+    dist = torch.norm(d_xy, dim=-1) + eps
+    dir_xy = d_xy / dist.unsqueeze(-1)  # (N,2) 단위벡터
+
+    # --- 속도: 베이스 yaw 프레임으로 정렬해서 목표방향 성분 ---
     vel_yaw = quat_apply_inverse(
         yaw_quat(base_quat_w), env.scene["robot"].data.root_lin_vel_w[:, :3]
     )[:, :2]
-    speed_along = (vel_yaw * dir_xy).sum(dim=-1).clamp(min=0.0)  # 목표방향 성분만
-    # 거리 shaping + 진행 보상 + 요 정렬(전방 x축과 dir_xy 코사인)
+    speed_along = (vel_yaw * dir_xy).sum(dim=-1)
+
+    # --- 접근 shaping ---
     approach = torch.exp(-((dist / dist_scale) ** 2))
-    base_x = torch.tensor([1.0, 0.0], device=env.device).expand_as(dir_xy)
-    cos_yaw = (dir_xy * base_x).sum(dim=-1).clamp(-1, 1)
-    r = approach + fwd_gain * speed_along + yaw_gain * cos_yaw
+
+    # --- yaw 정렬: "로봇 전방(베이스 yaw)의 월드 벡터" vs "목표 방향(월드)" ---
+    # 로봇 전방(+X)을 베이스 yaw로 월드에 투영한 2D 벡터
+    fwd_w = quat_apply(
+        yaw_quat(base_quat_w),
+        torch.tensor([1.0, 0.0, 0.0], device=env.device).expand(dist.shape[0], -1),
+    )[:, :2]
+    fwd_w = fwd_w / (fwd_w.norm(dim=-1, keepdim=True) + eps)
+    cos_yaw = (fwd_w * dir_xy).sum(dim=-1).clamp(-1.0, 1.0)
+
+    # --- 목표 속도 보상 (가우시안) ---
+    if v_des is not None:
+        v_err = speed_along - v_des
+        speed_shape = torch.exp(-((v_err / v_bw) ** 2))  # [0,1]
+        # v_des 쓸 땐 fwd_gain 조금만(또는 0) 권장
+    else:
+        speed_shape = torch.zeros_like(dist)
+
+    # --- 안전 이격(standoff) 보상 (가우시안) ---
+    if d_des is not None:
+        standoff = torch.exp(-(((dist - d_des) / d_bw) ** 2))  # [0,1]
+    else:
+        standoff = torch.zeros_like(dist)
+
+    # --- 언더벨리(몸체 밑) 패널티 (베이스 yaw 프레임) ---
+    rel_w = obj_pos_w - base_pos_w
+    rel_xyb = quat_apply_inverse(yaw_quat(base_quat_w), rel_w)[:, :2]
+    x_b = rel_xyb[:, 0].abs()
+    y_b = rel_xyb[:, 1].abs()
+    over_x = (under_half_len - under_margin - x_b).clamp(min=0.0)
+    over_y = (under_half_wid - under_margin - y_b).clamp(min=0.0)
+    inside = (over_x > 0) & (over_y > 0)
+    under_pen = (over_x * over_y) * inside.float() * under_pen_gain
+
+    # --- 합성 ---
+    r = (
+        approach
+        + (0.0 if v_des is not None else fwd_gain)
+        * speed_along.clamp(min=0.0)  # v_des 쓰면 fwd_gain 끄기
+        + yaw_gain * cos_yaw
+        + standoff
+        + speed_shape
+        - under_pen
+    )
+
+    # --- 페이즈 게이팅 ---
     m_nav, m_align, _, _, _ = _phase_masks(env)
-    # NAV + ALIGN에서만 유효 (너가 원하는대로 더 좁혀도 됨)
     return r * torch.clamp(m_nav + m_align, 0.0, 1.0)
 
 
@@ -490,6 +553,39 @@ def rew_approach_ee_object(
     out = near + far
     _, m_align, m_grasp, _, _ = _phase_masks(env)
     return out * torch.clamp(m_align + m_grasp, 0.0, 1.0)
+
+
+def rew_ee_progress_toward_object(env, ee_body="piper_gripper_base"):
+    # 현재 포즈
+    base_pos_w = env.scene["robot"].data.root_pos_w
+    base_quat_w = env.scene["robot"].data.root_quat_w
+    obj_pos_w, _ = _asset_root_pose_w(env, "object_box")
+    ee_pos_w, _ = _body_pose_w(env, "robot", ee_body)
+
+    # 베이스 yaw 프레임으로 투영(베이스 병진/요 영향 제거)
+    obj_b = quat_apply_inverse(yaw_quat(base_quat_w), obj_pos_w - base_pos_w)
+    ee_b = quat_apply_inverse(yaw_quat(base_quat_w), ee_pos_w - base_pos_w)
+
+    # 이전 스텝 보관(없으면 0으로 초기화)
+    if not hasattr(env, "_ee_b_prev"):
+        env._ee_b_prev = ee_b.clone()
+    ee_prev = env._ee_b_prev
+
+    # 목표 방향 단위벡터
+    d = obj_b - ee_b
+    dir = d[:, :2]
+    dir = dir / (dir.norm(dim=-1, keepdim=True) + 1e-6)
+
+    # EE가 한 스텝에 전진한 벡터(베이스 프레임)
+    delta = (ee_b - ee_prev)[:, :2]
+    progress = (delta * dir).sum(dim=-1).clamp(min=0.0)  # 목표쪽 성분만
+
+    # 업데이트
+    env._ee_b_prev = ee_b.detach()
+
+    # ALIGN/GRASP에서만
+    _, m_align, m_grasp, _, _ = _phase_masks(env)
+    return progress * (m_align + m_grasp).clamp(0, 1)
 
 
 # ---------- 1) 조기닫힘 페널티(멀리서 닫으면 -) ----------
@@ -696,16 +792,9 @@ def rew_place_release(
 def body_relative_height_gated(
     env,
     sensor_cfg,
-    target_clearance: float = 0.42,
-    dist_align: float = 0.30,
-    dist_grasp: float = 0.10,
-    close_open: float = 0.02,
+    target_clearance: float = 0.42,  # 이건 '높이' 자체의 타깃이니 유지
 ):
-    # 원래 body_relative_height 계산 그대로
     base = body_relative_height(env, sensor_cfg, target_clearance=target_clearance)
-    m_nav, m_align, m_grasp, m_carry, m_place = _phase_masks(
-        env, dist_align=dist_align, dist_grasp=dist_grasp, close_open=close_open
-    )
-    # NAV/CARRY에서만 유효(= 그 외 단계에서는 0)
+    m_nav, m_align, m_grasp, m_carry, m_place = _phase_masks(env)
     gate = torch.clamp(m_nav + m_carry, 0.0, 1.0)
     return base * gate
