@@ -70,6 +70,16 @@ class Go2PiperWholebodyEnv(ManagerBasedRLEnv):
         )
 
     def step(self, actions):
+        m_nav, m_align, m_grasp, _, _ = _phase_masks(self)
+        m_ag = (m_align + m_grasp).clamp(0, 1).unsqueeze(-1)  # (N,1)
+        ramp = 1.0 - 0.8 * m_ag  # NAV=1.0, ALIGN/GRASP=0.2
+
+        # 스키마 인덱스
+        sch = self.cfg.action_schema
+        b0, bd = sch["base_cmd"]["start"], sch["base_cmd"]["dim"]
+
+        actions = actions.clone()
+        actions[:, b0 : b0 + bd] = actions[:, b0 : b0 + bd] * ramp  # 실행 감쇠
         obs, rew, terminated, truncated, info = super().step(actions)
         self._global_step += 1
 

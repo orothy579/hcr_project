@@ -368,37 +368,61 @@ def _inside_zone_xy(obj_pos_w, zone_pos_w, half_xy):
 
 def _phase_masks(
     env,
-    dist_align=2.0,  # NAV→ALIGN 경계
-    dist_grasp=0.10,  # ALIGN→GRASP 경계
+    dist_align=2.0,  # (호환용, 실제로는 d_des/d_bw에서 계산)
+    dist_grasp=0.40,  # ALIGN→GRASP 경계 (EE–Object)
     close_open=0.02,  # '닫힘' 임계 (opening)
     zone_half_xy=(0.25, 0.25),
+    # === 추가: 보상과 일관된 경계 계산용 ===
+    d_des=0.75,
+    d_bw=0.1,
+    k_enter=1.0,  # NAV→ALIGN 진입: d_des + k_enter*d_bw (≈ 0.90m)
+    k_exit=2.0,  # ALIGN→NAV 복귀: d_des + k_exit*d_bw (≈ 1.05m)
 ):
-    # EE / Object / Zone
+    # --- 위치/포즈 ---
+    base_pos_w = env.scene["robot"].data.root_pos_w
+    base_quat_w = env.scene["robot"].data.root_quat_w
     obj_pos_w, _ = _asset_root_pose_w(env, "object_box")
     ee_pos_w, _ = _body_pose_w(env, "robot", "piper_gripper_base")
-    dist = torch.norm(obj_pos_w - ee_pos_w, dim=-1)  # (N,)
+
+    # --- 거리 정의 분리 ---
+    # 1) NAV 경계용: 베이스–오브젝트 XY 거리
+    d_xy = (obj_pos_w - base_pos_w)[:, :2]
+    dist_base = torch.norm(d_xy, dim=-1)  # (N,)
+
+    # 2) ALIGN/GRASP 경계용: EE–오브젝트 3D 거리 (너 원래 로직 유지)
+    dist_ee = torch.norm(obj_pos_w - ee_pos_w, dim=-1)  # (N,)
+
+    # --- 그리퍼/존 ---
     opening = get_gripper_opening_generic(env).squeeze(-1).abs()
-
     zone_pos_w, _ = _asset_root_pose_w(env, "place_zone")
-    inside_zone = _inside_zone_xy(obj_pos_w, zone_pos_w, zone_half_xy)
+    inside_zone = _inside_zone_xy(obj_pos_w, zone_pos_w, zone_half_xy)  # bool(N,)
 
-    # carrying(잡음) 판단을 부드럽게: close & 근접
+    # --- 소프트 게이트(너가 쓰던 함수 그대로 활용) ---
+    near_for_grasp = _soft_gate_le(dist_ee, dist_grasp)  # EE 10cm 내면 1
     closed_mask = _soft_gate_le(opening, close_open)  # 닫힘일수록 1
-    near_for_grasp = _soft_gate_le(dist, dist_grasp)  # 10cm 내면 1
-    carrying_soft = closed_mask * near_for_grasp  # [0..1]
+    carrying_soft = closed_mask * near_for_grasp  # [0,1]
 
-    # 단계별 소프트 마스크 (값은 0~1)
-    m_nav = _soft_gate_ge(dist, dist_align) * (
-        1.0 - carrying_soft
-    )  # 멀리 + 아직 안 집음
-    m_align = (
-        (1.0 - _soft_gate_ge(dist, dist_align))
-        * (1.0 - near_for_grasp)
-        * (1.0 - carrying_soft)
-    )
-    m_grasp = near_for_grasp * (1.0 - carrying_soft)  # 근접인데 아직 미집음
-    m_carry = carrying_soft * (1.0 - inside_zone.float())  # 집은 상태 + Zone 밖
-    m_place = carrying_soft * inside_zone.float()  # 집은 상태 + Zone 안
+    # --- NAV↔ALIGN 경계(히스테리시스): 보상 파라미터와 일치 ---
+    d_align_enter = d_des + k_enter * d_bw  # NAV→ALIGN 진입
+    d_align_exit = d_des + k_exit * d_bw  # ALIGN→NAV 복귀
+
+    far_base = _soft_gate_ge(dist_base, d_align_exit)  # 멀리면 1
+    near_base = 1.0 - _soft_gate_ge(dist_base, d_align_enter)  # 가까우면 1
+
+    # --- 단계별 소프트 마스크 ---
+    # NAV: 베이스가 충분히 멀고( far_base ), 아직 안 집음
+    m_nav = far_base * (1.0 - carrying_soft)
+
+    # ALIGN: 베이스는 충분히 가까워졌고( near_base ), EE는 아직 너무 가깝지 않음( grasp 전 )
+    m_align = near_base * (1.0 - near_for_grasp) * (1.0 - carrying_soft)
+
+    # GRASP: EE가 근접했는데 아직 미집음
+    m_grasp = near_for_grasp * (1.0 - carrying_soft)
+
+    # CARRY/PLACE: 집은 상태(carrying_soft) + 존 위치
+    m_carry = carrying_soft * (1.0 - inside_zone.float())
+    m_place = carrying_soft * inside_zone.float()
+
     return m_nav, m_align, m_grasp, m_carry, m_place
 
 
@@ -530,7 +554,7 @@ def rew_approach_ee_object(
     env,
     ee_cfg: SceneEntityCfg,
     object_cfg: SceneEntityCfg,
-    dist_scale: float = 0.5,
+    dist_scale: float = 0.06,
     use_base_frame: bool = True,
 ) -> torch.Tensor:
     obj_pos_w, _ = _asset_root_pose_w(env, object_cfg.name)
@@ -555,37 +579,43 @@ def rew_approach_ee_object(
     return out * torch.clamp(m_align + m_grasp, 0.0, 1.0)
 
 
-def rew_ee_progress_toward_object(env, ee_body="piper_gripper_base"):
-    # 현재 포즈
+# rewards.py
+def rew_ee_progress_toward_object(
+    env,
+    ee_body="piper_gripper_base",
+    ema_alpha: float = 0.2,  # 0.1~0.3
+    gain: float = 3.0,  # 필요시 5.0
+    clamp_step: float = 0.03,  # 스텝당 최대 감소 가정
+    near_win: float = 0.12,  # 너무 가까우면 감쇠
+    far_win: float = 0.35,  # 너무 멀면 감쇠
+):
     base_pos_w = env.scene["robot"].data.root_pos_w
     base_quat_w = env.scene["robot"].data.root_quat_w
     obj_pos_w, _ = _asset_root_pose_w(env, "object_box")
     ee_pos_w, _ = _body_pose_w(env, "robot", ee_body)
 
-    # 베이스 yaw 프레임으로 투영(베이스 병진/요 영향 제거)
     obj_b = quat_apply_inverse(yaw_quat(base_quat_w), obj_pos_w - base_pos_w)
     ee_b = quat_apply_inverse(yaw_quat(base_quat_w), ee_pos_w - base_pos_w)
+    dist = torch.norm(obj_b - ee_b, dim=-1)
 
-    # 이전 스텝 보관(없으면 0으로 초기화)
-    if not hasattr(env, "_ee_b_prev"):
-        env._ee_b_prev = ee_b.clone()
-    ee_prev = env._ee_b_prev
+    if not hasattr(env, "_ee_obj_dist_ema"):
+        env._ee_obj_dist_ema = dist.clone()
+    dist_ema_prev = env._ee_obj_dist_ema
+    dist_ema = ema_alpha * dist + (1 - ema_alpha) * dist_ema_prev
+    env._ee_obj_dist_ema = dist_ema.detach()
 
-    # 목표 방향 단위벡터
-    d = obj_b - ee_b
-    dir = d[:, :2]
-    dir = dir / (dir.norm(dim=-1, keepdim=True) + 1e-6)
+    delta = dist_ema_prev - dist_ema  # 가까워졌으면 +
+    prog = torch.clamp(delta / (clamp_step + 1e-6), min=0.0, max=1.0)
 
-    # EE가 한 스텝에 전진한 벡터(베이스 프레임)
-    delta = (ee_b - ee_prev)[:, :2]
-    progress = (delta * dir).sum(dim=-1).clamp(min=0.0)  # 목표쪽 성분만
+    far_gate = torch.exp(-((dist / (far_win + 1e-6)) ** 2))
+    near_gate = torch.exp(
+        -(((torch.clamp(near_win - dist, min=0.0) / (near_win + 1e-6)) ** 2))
+    )
+    window = torch.minimum(far_gate, near_gate)
 
-    # 업데이트
-    env._ee_b_prev = ee_b.detach()
-
-    # ALIGN/GRASP에서만
     _, m_align, m_grasp, _, _ = _phase_masks(env)
-    return progress * (m_align + m_grasp).clamp(0, 1)
+    m_ag = torch.clamp(m_align + m_grasp, 0.0, 1.0)
+    return gain * prog * window * m_ag
 
 
 # ---------- 1) 조기닫힘 페널티(멀리서 닫으면 -) ----------

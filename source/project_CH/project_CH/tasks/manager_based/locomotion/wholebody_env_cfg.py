@@ -93,7 +93,7 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
         self.scene.object_box = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/Cuboid",
             spawn=sim_utils.CuboidCfg(
-                size=(0.05, 0.05, 0.05),
+                size=(0.05, 0.05, 0.15),
                 rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False),
                 mass_props=sim_utils.MassPropertiesCfg(mass=0.35),
                 collision_props=sim_utils.CollisionPropertiesCfg(
@@ -106,7 +106,7 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
             init_state=RigidObjectCfg.InitialStateCfg(),
         )
 
-        self.scene.object_box.init_state.pos = (0.0, 2.0, 0.2)
+        self.scene.object_box.init_state.pos = (1.5, 2.0, 0.2)
 
         self.scene.place_zone = RigidObjectCfg(
             prim_path="{ENV_REGEX_NS}/PlaceZone",
@@ -202,6 +202,7 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
                 },
             )
 
+            # ===== stage 2 =====
             self.rewards.nav_to_object = RewardTermCfg(
                 func=rew_nav_to_object,
                 weight=1.0,
@@ -215,17 +216,17 @@ class Go2PiperWholebodyEnvCfg(Go2PiperRoughEnvCfg):
             # 0) 접근
             self.rewards.approach = RewardTermCfg(
                 func=rew_approach_ee_object,
-                weight=12.0,
+                weight=8.0,
                 params={
                     "ee_cfg": ee_cfg,
                     "object_cfg": obj_cfg,
-                    "dist_scale": 0.5,
+                    "dist_scale": 0.06,
                     "use_base_frame": True,
                 },
             )
 
             self.rewards.ee_progress = RewardTermCfg(
-                func=rew_ee_progress_toward_object, weight=10.0
+                func=rew_ee_progress_toward_object, weight=6.0
             )
 
             # 1) 조기닫힘 페널티
